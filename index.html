@@ -150,6 +150,8 @@
     const tempVec2 = new THREE.Vector3();
     const tempVec3 = new THREE.Vector3();
     let hipBaseOffset = 0;
+    let previousAnimValue = null;
+    let previousHipAngle = null;
 
         const container = document.getElementById('canvas-container');
         const readoutHip = document.getElementById('hip-angle');
@@ -349,6 +351,8 @@
 
             hipBaseOffset = hipAngle;
             skeleton.hip.rotation.z = 0;
+            previousAnimValue = null;
+            previousHipAngle = null;
         }
 
         function updateModelProportions() {
@@ -386,24 +390,27 @@
 
             const ease = (value, power) => Math.pow(THREE.MathUtils.clamp(value, 0, 1), power);
 
+            const torsoScale = parseFloat(torsoSlider.value);
+            const easingScale = THREE.MathUtils.lerp(1.25, 0.85, THREE.MathUtils.clamp((torsoScale - 0.8) / 0.4, 0, 1));
             const ankleAngle = THREE.MathUtils.lerp(
                 squatStart.ankleFlex,
                 squatEnd.ankleFlex,
-                ease(t, 1.15)
+                ease(t, 1.15 * easingScale)
             );
             let kneeFlex = THREE.MathUtils.lerp(
                 squatStart.kneeFlex,
                 squatEnd.kneeFlex,
-                ease(t, 1.35)
+                ease(t, 1.35 * easingScale)
             );
             const alignFactorRaw = THREE.MathUtils.smoothstep(t, ALIGN_START_RATIO, 1);
-            const alignFactor = Math.pow(alignFactorRaw, 1.4);
+            const alignPower = 1.4 * easingScale;
+            const alignFactor = Math.pow(alignFactorRaw, alignPower);
             const depthFactorRaw = THREE.MathUtils.smoothstep(t, DEPTH_START_RATIO, 1);
-            const depthFactor = Math.pow(depthFactorRaw, 1.5);
+            const depthFactor = Math.pow(depthFactorRaw, 1.5 * easingScale);
             const hipBase = THREE.MathUtils.lerp(
                 squatStart.hipFlex,
                 squatEnd.hipFlex,
-                ease(t, 1.6)
+                ease(t, 1.6 * easingScale)
             );
 
             skeleton.ankleRotator.rotation.z = ankleAngle;
@@ -468,17 +475,32 @@
                 hipAligned = THREE.MathUtils.clamp(hipAligned + delta, HIP_MIN, HIP_MAX);
             }
 
+            const swingLimitBase = THREE.MathUtils.degToRad(20 + 40 * alignFactor);
+            const swingLimit = swingLimitBase * torsoScale;
+            hipAligned = THREE.MathUtils.clamp(hipAligned, hipSolve - swingLimit, hipSolve + swingLimit);
+
             // Blend toward the aligned solution to keep the descent smooth
+            const alignWeight = THREE.MathUtils.lerp(START_ALIGN_WEIGHT, START_ALIGN_WEIGHT * 0.45, THREE.MathUtils.clamp(1 - torsoScale, 0, 1));
             const hipBaseBlended = THREE.MathUtils.clamp(
-                hipBase + hipBaseOffset * START_ALIGN_WEIGHT,
+                hipBase + hipBaseOffset * alignWeight,
                 HIP_MIN,
                 HIP_MAX
             );
-            const finalHip = THREE.MathUtils.clamp(
+            let finalHip = THREE.MathUtils.clamp(
                 THREE.MathUtils.lerp(hipBaseBlended, hipAligned, alignFactor),
                 HIP_MIN,
                 HIP_MAX
             );
+
+            if (previousAnimValue !== null && previousHipAngle !== null) {
+                if (t >= previousAnimValue) {
+                    finalHip = Math.min(finalHip, previousHipAngle);
+                } else {
+                    finalHip = Math.max(finalHip, previousHipAngle);
+                }
+                finalHip = THREE.MathUtils.clamp(finalHip, HIP_MIN, HIP_MAX);
+            }
+
             skeleton.hip.rotation.z = finalHip;
 
             skeleton.ankle.updateWorldMatrix(true, false);
@@ -490,6 +512,9 @@
             readoutHip.textContent = `${hipDeg.toFixed(1)}°`;
             readoutKnee.textContent = `${kneeDeg.toFixed(1)}°`;
             readoutAnkle.textContent = `${ankleDeg.toFixed(1)}°`;
+
+            previousAnimValue = t;
+            previousHipAngle = finalHip;
         }
 
         function onWindowResize() {
