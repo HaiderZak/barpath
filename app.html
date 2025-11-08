@@ -104,20 +104,17 @@
                 </div>
             </div>
 
-            <!-- Lift Setup -->
+            <!-- Bar Marker Placement -->
             <div>
-                <h2 class="text-sm font-semibold text-blue-400 mb-3">LIFT SETUP (SQUAT)</h2>
-                <div class="space-y-4">
-                    <div>
-                        <label for="bar-slider" class="text-sm text-gray-300 block mb-1">Bar Position (High/Low): <span id="bar-val" class="font-medium text-white">0.0</span></label>
-                        <input id="bar-slider" type="range" min="-0.1" max="0.1" step="0.01" value="0.0">
-                        <div class="flex justify-between text-xs text-gray-400">
-                            <span>Low Bar</span>
-                            <span>High Bar</span>
-                        </div>
-                    </div>
+                <h2 class="text-sm font-semibold text-blue-400 mb-3">BAR MARKER</h2>
+                <label for="bar-slider" class="text-sm text-gray-300 block mb-1">Marker Height: <span id="bar-val" class="font-medium text-white">0.50</span></label>
+                <input id="bar-slider" type="range" min="0" max="1" step="0.01" value="0.5">
+                <div class="flex justify-between text-xs text-gray-400">
+                    <span>Low Bar</span>
+                    <span>High Bar</span>
                 </div>
             </div>
+
         </div>
     </div>
 
@@ -128,7 +125,6 @@
             <div>Hip Angle: <span id="hip-angle" class="font-bold text-white">0.0°</span></div>
             <div>Knee Angle: <span id="knee-angle" class="font-bold text-white">0.0°</span></div>
             <div>Ankle Angle: <span id="ankle-angle" class="font-bold text-white">0.0°</span></div>
-            <div class="pt-2 border-t border-gray-700 mt-2">Lever Arm: <span id="lever-arm" class="font-bold text-white">0.00</span></div>
         </div>
     </div>
 
@@ -136,327 +132,372 @@
     <script type="module">
         import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
 
-        // --- GLOBAL VARS ---
-        let scene, camera, renderer;
-        let skeleton = {};
-        let helpers = {};
-        let startBarWorldX = 0; // The X-position of the bar at t=0
-        
-        // --- Keyframes for Squat (Angles in Radians) ---
-        // These define the *movement*, not the *proportions*
-        // We removed hipPos, as it will be calculated by our IK solver
-        const squatStart = {
-            hipAngle: 0,        // 0 = fully extended
-            kneeAngle: 0,       // 0 = fully extended
-            ankleAngle: 0,      // 0 = 90 deg relative to tibia
-        };
-        const squatEnd = {
-            hipAngle: -2.1,     // ~120 degrees flexion
-            kneeAngle: -2.1,    // ~120 degrees flexion
-            ankleAngle: -0.6,   // ~35 degrees dorsiflexion
-        };
-        
-        // --- DOM Elements ---
+        const LIMB_WIDTH = 0.05;
+        const JOINT_RADIUS = 0.07;
+        const HEAD_RADIUS = 0.15;
+    const FOOT_LENGTH = 0.5;
+    const FOOT_FORWARD = 0.18;
+    const DEPTH_MARGIN = 0.02;
+    const DEPTH_START_RATIO = 0.6;
+    const ALIGN_START_RATIO = 0.1;
+    const HIP_MIN = THREE.MathUtils.degToRad(-160);
+    const HIP_MAX = THREE.MathUtils.degToRad(45);
+    const START_ALIGN_WEIGHT = 0.25;
+
+    let scene, camera, renderer;
+    const skeleton = {};
+    const tempVec1 = new THREE.Vector3();
+    const tempVec2 = new THREE.Vector3();
+    const tempVec3 = new THREE.Vector3();
+    let hipBaseOffset = 0;
+
         const container = document.getElementById('canvas-container');
         const readoutHip = document.getElementById('hip-angle');
         const readoutKnee = document.getElementById('knee-angle');
         const readoutAnkle = document.getElementById('ankle-angle');
-        const readoutLever = document.getElementById('lever-arm');
 
-        // --- Sliders ---
         const animSlider = document.getElementById('animation-slider');
         const torsoSlider = document.getElementById('torso-slider');
         const femurSlider = document.getElementById('femur-slider');
         const tibiaSlider = document.getElementById('tibia-slider');
         const barSlider = document.getElementById('bar-slider');
-        
-        // --- Value Labels ---
+
         const torsoVal = document.getElementById('torso-val');
         const femurVal = document.getElementById('femur-val');
         const tibiaVal = document.getElementById('tibia-val');
         const barVal = document.getElementById('bar-val');
 
-        // --- INIT ---
-        function init() {
-            // Scene
-            scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x111827); // gray-900
+        const squatStart = {
+            hipFlex: THREE.MathUtils.degToRad(0),
+            kneeFlex: THREE.MathUtils.degToRad(0),
+            ankleFlex: THREE.MathUtils.degToRad(0)
+        };
 
-            // Renderer
+        const squatEnd = {
+            hipFlex: THREE.MathUtils.degToRad(-150),  // deeper torso lean over femur
+            kneeFlex: THREE.MathUtils.degToRad(-170), // additional knee flexion to drop hip
+            ankleFlex: THREE.MathUtils.degToRad(-42)  // extra dorsiflexion to keep balance
+        };
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827);
+
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(container.clientWidth, container.clientHeight);
             container.appendChild(renderer.domElement);
 
-            // Camera
             const aspect = container.clientWidth / container.clientHeight;
-            const viewSize = 6; // Controls zoom
+            const viewSize = 6;
             camera = new THREE.OrthographicCamera(
-                -viewSize * aspect / 2, 
-                viewSize * aspect / 2, 
-                viewSize / 2, 
-                -viewSize / 2, 
-                0.1, 
+                -viewSize * aspect / 2,
+                viewSize * aspect / 2,
+                viewSize / 2,
+                -viewSize / 2,
+                0.1,
                 100
             );
-            camera.position.set(0, 2.5, 10);
+            camera.position.set(5, 3, 8);
             camera.lookAt(0, 2.5, 0);
 
-            // Lights
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(5, 10, 7.5);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.9);
+            directionalLight.position.set(5, 8, 10);
             scene.add(directionalLight);
-            
-            // Floor
+
             const floorGeo = new THREE.BoxGeometry(10, 0.1, 10);
-            const floorMat = new THREE.MeshStandardMaterial({ color: 0x374151 }); // gray-700
+            const floorMat = new THREE.MeshStandardMaterial({ color: 0x374151 });
             const floor = new THREE.Mesh(floorGeo, floorMat);
             floor.position.set(0, -0.05, 0);
             scene.add(floor);
 
-            // Create Skeleton
             createSkeleton();
-            
-            // Create Helpers
-            createHelpers();
-
-            // Add Event Listeners
+            calibrateHipBase();
             addEventListeners();
-            
-            // Initial Update
-            updateModelProportions(); // This will also call updateAnimation(t=0)
-            
-            // Get the starting bar position AFTER the initial render
-            // This is our "golden" X coordinate for the vertical bar path
-            const barPos = new THREE.Vector3();
-            skeleton.bar.getWorldPosition(barPos);
-            startBarWorldX = barPos.x;
-            helpers.barPathLine.position.x = startBarWorldX;
-
-            // Start Render Loop
+            updateModelProportions();
             animate();
         }
 
-        // --- CREATE SKELETON ---
         function createSkeleton() {
-            const limbMaterial = new THREE.MeshStandardMaterial({ color: 0xf3f4f6 }); // gray-100
-            const jointMaterial = new THREE.MeshStandardMaterial({ color: 0x3b82f6 }); // blue-500
-            const barMaterial = new THREE.MeshStandardMaterial({ color: 0xef4444 }); // red-500
+            const limbMaterial = new THREE.MeshStandardMaterial({ color: 0xf3f4f6 });
+            const jointMaterial = new THREE.MeshStandardMaterial({ color: 0x3b82f6 });
 
-            const limbWidth = 0.05;
-            const jointRadius = 0.07;
+            const footGeo = new THREE.BoxGeometry(FOOT_LENGTH, LIMB_WIDTH, LIMB_WIDTH);
+            const tibiaGeo = new THREE.BoxGeometry(LIMB_WIDTH, 1, LIMB_WIDTH);
+            const femurGeo = new THREE.BoxGeometry(LIMB_WIDTH, 1, LIMB_WIDTH);
+            const torsoGeo = new THREE.BoxGeometry(LIMB_WIDTH * 2.2, 1, LIMB_WIDTH * 2.2);
+            const headGeo = new THREE.SphereGeometry(HEAD_RADIUS, 16, 16);
+            const jointGeo = new THREE.SphereGeometry(JOINT_RADIUS, 16, 16);
+            const markerGeo = new THREE.SphereGeometry(0.06, 16, 16);
 
-            // --- Geometries ---
-            const footGeo = new THREE.BoxGeometry(0.5, limbWidth, limbWidth);
-            const tibiaGeo = new THREE.BoxGeometry(limbWidth, 1, limbWidth);
-            const femurGeo = new THREE.BoxGeometry(limbWidth, 1, limbWidth);
-            const torsoGeo = new THREE.BoxGeometry(limbWidth * 2, 1, limbWidth * 2);
-            const barGeo = new THREE.CylinderGeometry(0.04, 0.04, 1.5, 16);
-            barGeo.rotateZ(Math.PI / 2); // Make it horizontal
-            
-            const jointGeo = new THREE.SphereGeometry(jointRadius, 16, 16);
-
-            // --- Parts (Meshes) ---
             skeleton.foot = new THREE.Mesh(footGeo, limbMaterial);
             skeleton.tibia = new THREE.Mesh(tibiaGeo, limbMaterial);
             skeleton.femur = new THREE.Mesh(femurGeo, limbMaterial);
             skeleton.torso = new THREE.Mesh(torsoGeo, limbMaterial);
-            skeleton.bar = new THREE.Mesh(barGeo, barMaterial);
-            
-            // --- Visible Joints (Meshes) ---
+            skeleton.head = new THREE.Mesh(headGeo, limbMaterial);
+            skeleton.barMarker = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x7f1d1d, emissiveIntensity: 0.6 }));
+
             skeleton.ankleJoint = new THREE.Mesh(jointGeo, jointMaterial);
             skeleton.kneeJoint = new THREE.Mesh(jointGeo, jointMaterial);
             skeleton.hipJoint = new THREE.Mesh(jointGeo, jointMaterial);
-            skeleton.shoulderJoint = new THREE.Mesh(jointGeo, jointMaterial);
 
-            // --- Pivots (Groups) ---
-            // We build the hierarchy from the ground up
             skeleton.ankle = new THREE.Group();
+            skeleton.ankleRotator = new THREE.Group();
             skeleton.knee = new THREE.Group();
+            skeleton.femurGroup = new THREE.Group();
             skeleton.hip = new THREE.Group();
-            skeleton.shoulder = new THREE.Group(); // Pivot for the bar
-            
-            // --- Assemble Hierarchy ---
+
             scene.add(skeleton.ankle);
+
             skeleton.ankle.add(skeleton.foot);
-            skeleton.ankle.add(skeleton.tibia);
             skeleton.ankle.add(skeleton.ankleJoint);
-            skeleton.ankle.add(skeleton.knee);
-            
-            skeleton.knee.add(skeleton.femur);
-            skeleton.knee.add(skeleton.kneeJoint);
-            skeleton.knee.add(skeleton.hip);
-            
+            skeleton.ankle.add(skeleton.ankleRotator);
+
+            skeleton.ankleRotator.add(skeleton.tibia);
+            skeleton.ankleRotator.add(skeleton.kneeJoint);
+            skeleton.ankleRotator.add(skeleton.knee);
+
+            skeleton.knee.add(skeleton.femurGroup);
+
+            skeleton.femurGroup.add(skeleton.femur);
+            skeleton.femurGroup.add(skeleton.hipJoint);
+            skeleton.femurGroup.add(skeleton.hip);
+
             skeleton.hip.add(skeleton.torso);
-            skeleton.hip.add(skeleton.hipJoint);
-            skeleton.hip.add(skeleton.shoulder);
-            
-            skeleton.shoulder.add(skeleton.bar);
-            skeleton.shoulder.add(skeleton.shoulderJoint);
-            
-            // Set base positions
-            skeleton.ankle.position.y = jointRadius; // Set ankle pivot at joint radius height
-            skeleton.foot.position.x = 0.15; // Place heel at 0, mid-foot forward
-        }
-        
-        // --- CREATE HELPERS ---
-        function createHelpers() {
-            // Lever arm line
-            const lineMat = new THREE.LineBasicMaterial({ color: 0xfbbf24 }); // amber-400
-            const points = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, 0)];
-            const lineGeo = new THREE.BufferGeometry().setFromPoints(points);
-            helpers.leverArmLine = new THREE.Line(lineGeo, lineMat);
-            helpers.leverArmLine.position.z = 0.5; // Bring in front
-            scene.add(helpers.leverArmLine);
-            
-            // Bar path line (vertical)
-            const barPathMat = new THREE.LineBasicMaterial({ color: 0xef4444, dashed: true, dashSize: 0.1, gapSize: 0.05 });
-            const barPoints = [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 5, 0)];
-            const barPathGeo = new THREE.BufferGeometry().setFromPoints(barPoints);
-            helpers.barPathLine = new THREE.Line(barPathGeo, barPathMat);
-            helpers.barPathLine.position.z = 0.4;
-            // We now set the X position in init()
-            scene.add(helpers.barPathLine);
+            skeleton.hip.add(skeleton.head);
+            skeleton.torso.add(skeleton.barMarker);
+
+            skeleton.ankle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, 0);
+            skeleton.foot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
+            skeleton.ankleJoint.position.set(0, 0, 0);
+
+            skeleton.tibia.position.set(0, 0.5, 0);
+            skeleton.knee.position.set(0, 1, 0);
+            skeleton.kneeJoint.position.set(0, 1, 0);
+
+            skeleton.femur.position.set(0, 0.5, 0);
+            skeleton.hip.position.set(0, 1, 0);
+            skeleton.hipJoint.position.set(0, 1, 0);
+
+            skeleton.torso.position.set(0, 0.5, 0);
+            skeleton.head.position.set(0, 1.1, 0);
+            skeleton.barMarker.position.set(0, 0, LIMB_WIDTH * 2.5);
         }
 
-        // --- EVENT LISTENERS ---
         function addEventListeners() {
             window.addEventListener('resize', onWindowResize);
-            
-            // Link sliders to update functions
-            [torsoSlider, femurSlider, tibiaSlider, barSlider].forEach(slider => {
+
+            [torsoSlider, femurSlider, tibiaSlider].forEach(slider => {
                 slider.addEventListener('input', updateModelProportions);
             });
-            
+
             animSlider.addEventListener('input', updateAnimation);
 
-            // Link sliders to value labels
             torsoSlider.addEventListener('input', (e) => torsoVal.textContent = parseFloat(e.target.value).toFixed(2));
             femurSlider.addEventListener('input', (e) => femurVal.textContent = parseFloat(e.target.value).toFixed(2));
             tibiaSlider.addEventListener('input', (e) => tibiaVal.textContent = parseFloat(e.target.value).toFixed(2));
-            barSlider.addEventListener('input', (e) => barVal.textContent = parseFloat(e.target.value).toFixed(2));
+            barSlider.addEventListener('input', () => {
+                updateBarMarkerPosition();
+                calibrateHipBase();
+                updateAnimation();
+            });
         }
 
-        // --- UPDATE MODEL PROPORTIONS (from Sliders) ---
+        function updateBarMarkerPosition() {
+            if (!skeleton.barMarker) return;
+            const placement = parseFloat(barSlider.value);
+            const normalizedY = THREE.MathUtils.lerp(-0.15, 0.4, placement);
+            skeleton.barMarker.position.y = normalizedY;
+            skeleton.barMarker.position.z = LIMB_WIDTH * 2.5;
+            barVal.textContent = placement.toFixed(2);
+        }
+
+        function calibrateHipBase() {
+            if (!skeleton.hip) return;
+
+            skeleton.ankleRotator.rotation.z = squatStart.ankleFlex;
+            skeleton.femurGroup.rotation.z = squatStart.ankleFlex - squatStart.kneeFlex;
+            skeleton.hip.rotation.z = 0;
+
+            skeleton.ankle.position.x = 0;
+            skeleton.foot.position.x = FOOT_FORWARD;
+
+            const MAX_ITER = 12;
+            const MAX_DELTA = 0.12;
+            let hipAngle = 0;
+
+            for (let i = 0; i < MAX_ITER; i++) {
+                skeleton.ankle.updateWorldMatrix(true, false);
+                skeleton.barMarker.getWorldPosition(tempVec1);
+                skeleton.hip.getWorldPosition(tempVec2);
+                skeleton.foot.getWorldPosition(tempVec3);
+
+                const error = tempVec3.x - tempVec1.x;
+                if (Math.abs(error) < 5e-5) break;
+
+                const relative = tempVec1.clone().sub(tempVec2);
+                const derivative = -relative.y;
+                if (Math.abs(derivative) < 1e-4) break;
+
+                let delta = error / derivative;
+                if (!Number.isFinite(delta)) break;
+                delta = THREE.MathUtils.clamp(delta, -MAX_DELTA, MAX_DELTA);
+                hipAngle = THREE.MathUtils.clamp(hipAngle + delta, HIP_MIN, HIP_MAX);
+                skeleton.hip.rotation.z = hipAngle;
+            }
+
+            hipBaseOffset = hipAngle;
+            skeleton.hip.rotation.z = 0;
+        }
+
         function updateModelProportions() {
             const torsoLength = parseFloat(torsoSlider.value);
             const femurLength = parseFloat(femurSlider.value);
             const tibiaLength = parseFloat(tibiaSlider.value);
-            const barOffset = parseFloat(barSlider.value);
-            
-            // Scale the limbs and position the next joint
-            // Tibia
+
             skeleton.tibia.scale.y = tibiaLength;
             skeleton.tibia.position.y = tibiaLength / 2;
-            skeleton.knee.position.y = tibiaLength; // Move knee joint to top of tibia
-            
-            // Femur
+            skeleton.knee.position.y = tibiaLength;
+            skeleton.kneeJoint.position.y = tibiaLength;
+
             skeleton.femur.scale.y = femurLength;
             skeleton.femur.position.y = femurLength / 2;
-            skeleton.hip.position.y = femurLength; // Move hip joint to top of femur
-            
-            // Torso
+            skeleton.hip.position.y = femurLength;
+            skeleton.hipJoint.position.y = femurLength;
+
             skeleton.torso.scale.y = torsoLength;
             skeleton.torso.position.y = torsoLength / 2;
-            skeleton.shoulder.position.y = torsoLength * 0.9; // Shoulder near top
-            
-            // Bar
-            skeleton.bar.position.y = barOffset; // Relative to shoulder
-            
-            // When proportions change, we MUST reset the animation and recalculate
-            // the starting bar position.
-            animSlider.value = "0";
-            updateAnimation(); // Apply t=0 angles
-            
-            // Recalculate the baseline bar X-position
-            const barPos = new THREE.Vector3();
-            skeleton.bar.getWorldPosition(barPos);
-            startBarWorldX = barPos.x;
-            helpers.barPathLine.position.x = startBarWorldX;
-            
-            // Run updateAnimation again to apply the correction with the new startX
+            skeleton.head.position.y = torsoLength + HEAD_RADIUS;
+
+            skeleton.foot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
+
+            torsoVal.textContent = torsoLength.toFixed(2);
+            femurVal.textContent = femurLength.toFixed(2);
+            tibiaVal.textContent = tibiaLength.toFixed(2);
+            updateBarMarkerPosition();
+            calibrateHipBase();
+
             updateAnimation();
         }
 
-        // --- UPDATE ANIMATION (from Slider) ---
         function updateAnimation() {
-            const t = parseFloat(animSlider.value); // 0.0 to 1.0
+            const t = parseFloat(animSlider.value);
 
-            // 1. Reset horizontal position of the skeleton root
+            const ease = (value, power) => Math.pow(THREE.MathUtils.clamp(value, 0, 1), power);
+
+            const ankleAngle = THREE.MathUtils.lerp(
+                squatStart.ankleFlex,
+                squatEnd.ankleFlex,
+                ease(t, 1.15)
+            );
+            let kneeFlex = THREE.MathUtils.lerp(
+                squatStart.kneeFlex,
+                squatEnd.kneeFlex,
+                ease(t, 1.35)
+            );
+            const alignFactorRaw = THREE.MathUtils.smoothstep(t, ALIGN_START_RATIO, 1);
+            const alignFactor = Math.pow(alignFactorRaw, 1.4);
+            const depthFactorRaw = THREE.MathUtils.smoothstep(t, DEPTH_START_RATIO, 1);
+            const depthFactor = Math.pow(depthFactorRaw, 1.5);
+            const hipBase = THREE.MathUtils.lerp(
+                squatStart.hipFlex,
+                squatEnd.hipFlex,
+                ease(t, 1.6)
+            );
+
+            skeleton.ankleRotator.rotation.z = ankleAngle;
+
+            let femurAngle = ankleAngle - kneeFlex;
+            skeleton.femurGroup.rotation.z = femurAngle;
+
+            // Initial hip guess uses calibrated offset for solver stability
+            let hipSolve = THREE.MathUtils.clamp(hipBase + hipBaseOffset, HIP_MIN, HIP_MAX);
+            skeleton.hip.rotation.z = hipSolve;
+
+            // Adjust knee flexion until hip drops below knee by DEPTH_MARGIN
+            if (depthFactor > 0) {
+                const MAX_KNEE_ITER = 8;
+                const BASE_KNEE_STEP = THREE.MathUtils.degToRad(2.5);
+                const kneeStep = BASE_KNEE_STEP * depthFactor;
+                if (kneeStep > 0) {
+                    for (let i = 0; i < MAX_KNEE_ITER; i++) {
+                        skeleton.ankle.updateWorldMatrix(true, false);
+                        skeleton.hipJoint.getWorldPosition(tempVec1);
+                        skeleton.kneeJoint.getWorldPosition(tempVec2);
+
+                        if (tempVec1.y <= tempVec2.y - DEPTH_MARGIN) {
+                            break;
+                        }
+
+                        kneeFlex -= kneeStep;
+                        femurAngle = ankleAngle - kneeFlex;
+                        skeleton.femurGroup.rotation.z = femurAngle;
+                    }
+                }
+            }
+
+            skeleton.femurGroup.rotation.z = femurAngle;
+
+            // Keep feet planted each frame
             skeleton.ankle.position.x = 0;
+            skeleton.foot.position.x = FOOT_FORWARD;
 
-            // 2. Interpolate and apply angles
-            const hipAngle = THREE.MathUtils.lerp(squatStart.hipAngle, squatEnd.hipAngle, t);
-            const kneeAngle = THREE.MathUtils.lerp(squatStart.kneeAngle, squatEnd.kneeAngle, t);
-            const ankleAngle = THREE.MathUtils.lerp(squatStart.ankleAngle, squatEnd.ankleAngle, t);
-            
-            // Apply rotations
-            // Note: We use rotation.z for 2D side-view rotation
-            skeleton.hip.rotation.z = hipAngle;
-            skeleton.knee.rotation.z = kneeAngle;
-            skeleton.ankle.rotation.z = ankleAngle;
+            // Fully solve for hip rotation that keeps the bar marker over midfoot
+            let hipAligned = hipSolve;
+            const MAX_ITER = 14;
+            const MAX_DELTA = 0.12; // ~6.9°
+            for (let i = 0; i < MAX_ITER; i++) {
+                skeleton.hip.rotation.z = hipAligned;
+                skeleton.ankle.updateWorldMatrix(true, false);
+                skeleton.barMarker.getWorldPosition(tempVec1);
+                skeleton.hip.getWorldPosition(tempVec2);
+                skeleton.foot.getWorldPosition(tempVec3);
 
-            // 3. Force update the world matrix to get the new bar position
+                const targetX = tempVec3.x;
+                const error = targetX - tempVec1.x;
+                if (Math.abs(error) < 5e-5) break;
+
+                const relative = tempVec1.clone().sub(tempVec2);
+                const derivative = -relative.y;
+                if (Math.abs(derivative) < 1e-4) break;
+
+                let delta = error / derivative;
+                if (!Number.isFinite(delta)) break;
+                delta = THREE.MathUtils.clamp(delta, -MAX_DELTA, MAX_DELTA);
+                hipAligned = THREE.MathUtils.clamp(hipAligned + delta, HIP_MIN, HIP_MAX);
+            }
+
+            // Blend toward the aligned solution to keep the descent smooth
+            const hipBaseBlended = THREE.MathUtils.clamp(
+                hipBase + hipBaseOffset * START_ALIGN_WEIGHT,
+                HIP_MIN,
+                HIP_MAX
+            );
+            const finalHip = THREE.MathUtils.clamp(
+                THREE.MathUtils.lerp(hipBaseBlended, hipAligned, alignFactor),
+                HIP_MIN,
+                HIP_MAX
+            );
+            skeleton.hip.rotation.z = finalHip;
+
             skeleton.ankle.updateWorldMatrix(true, false);
 
-            // 4. Get the "uncorrected" bar position
-            const barPos = new THREE.Vector3();
-            skeleton.bar.getWorldPosition(barPos);
-            
-            // 5. Calculate the correction needed to keep bar vertical
-            const correctionX = startBarWorldX - barPos.x;
-            
-            // 6. Apply the correction to the root of the skeleton
-            skeleton.ankle.position.x = correctionX;
-            
-            // 7. Update readouts
-            // Hip angle is relative to torso (0 = straight)
-            // Knee angle is relative to femur (0 = straight)
-            // Ankle angle is relative to tibia (0 = 90 deg)
-            const hipDeg = THREE.MathUtils.radToDeg(hipAngle);
-            const kneeDeg = THREE.MathUtils.radToDeg(kneeAngle);
-            const ankleDeg = THREE.MathUtils.radToDeg(ankleAngle);
-            
-            // We want to show internal joint angles
-            readoutHip.textContent = `${(180 + hipDeg).toFixed(1)}°`;
-            readoutKnee.textContent = `${(180 + kneeDeg).toFixed(1)}°`;
-            readoutAnkle.textContent = `${(90 - ankleDeg).toFixed(1)}°`;
-            
-            // 8. Update helpers
-            updateHelpers();
-        }
-        
-        // --- UPDATE HELPERS (Lever Arm, etc.) ---
-        function updateHelpers() {
-            // Get world positions
-            const hipPos = new THREE.Vector3();
-            // We don't need barPos, since we know its X is startBarWorldX
-            
-            skeleton.hip.getWorldPosition(hipPos);
-            
-            // Update Lever Arm Line
-            const leverArmPoints = [];
-            const leverArmX = startBarWorldX; // Bar is forced to this X
-            leverArmPoints.push(new THREE.Vector3(hipPos.x, hipPos.y, 0.5));
-            leverArmPoints.push(new THREE.Vector3(leverArmX, hipPos.y, 0.5));
-            helpers.leverArmLine.geometry.setFromPoints(leverArmPoints);
-            helpers.leverArmLine.geometry.attributes.position.needsUpdate = true;
-            
-            // Update Lever Arm Readout
-            const leverArmLength = Math.abs(hipPos.x - leverArmX);
-            readoutLever.textContent = leverArmLength.toFixed(2);
-            
-            // Bar path line is now static, no update needed here
+            const hipDeg = THREE.MathUtils.radToDeg(finalHip);
+            const kneeDeg = Math.abs(THREE.MathUtils.radToDeg(kneeFlex));
+            const ankleDeg = Math.abs(THREE.MathUtils.radToDeg(ankleAngle));
+
+            readoutHip.textContent = `${hipDeg.toFixed(1)}°`;
+            readoutKnee.textContent = `${kneeDeg.toFixed(1)}°`;
+            readoutAnkle.textContent = `${ankleDeg.toFixed(1)}°`;
         }
 
-        // --- RESIZE ---
         function onWindowResize() {
             const w = container.clientWidth;
             const h = container.clientHeight;
-            
+
             renderer.setSize(w, h);
-            
+
             const aspect = w / h;
             const viewSize = 6;
             camera.left = -viewSize * aspect / 2;
@@ -466,17 +507,12 @@
             camera.updateProjectionMatrix();
         }
 
-        // --- RENDER LOOP ---
         function animate() {
             requestAnimationFrame(animate);
-            // In this version, animation is driven by the slider,
-            // so we just need to render the current state.
             renderer.render(scene, camera);
         }
 
-        // --- START ---
         init();
-
     </script>
 </body>
 </html>
