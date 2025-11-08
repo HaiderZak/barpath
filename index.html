@@ -115,6 +115,11 @@
                 </div>
             </div>
 
+            <!-- Utility -->
+            <div class="pt-4 border-t border-gray-700">
+                <button id="reset-button" class="w-full px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold rounded-md transition-colors">Reset to Defaults</button>
+            </div>
+
         </div>
     </div>
 
@@ -131,6 +136,7 @@
     <!-- THREE.JS SCRIPT -->
     <script type="module">
         import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
+        import { OrbitControls } from 'https://cdn.skypack.dev/three@0.132.2/examples/jsm/controls/OrbitControls.js';
 
         const LIMB_WIDTH = 0.05;
         const JOINT_RADIUS = 0.07;
@@ -143,8 +149,16 @@
     const HIP_MIN = THREE.MathUtils.degToRad(-160);
     const HIP_MAX = THREE.MathUtils.degToRad(45);
     const START_ALIGN_WEIGHT = 0.25;
+    const DEFAULTS = Object.freeze({
+        animation: 0,
+        torso: 1.0,
+        femur: 1.0,
+        tibia: 1.0,
+        bar: 0.5
+    });
 
     let scene, camera, renderer;
+    let controls;
     const skeleton = {};
     const tempVec1 = new THREE.Vector3();
     const tempVec2 = new THREE.Vector3();
@@ -163,6 +177,7 @@
         const femurSlider = document.getElementById('femur-slider');
         const tibiaSlider = document.getElementById('tibia-slider');
         const barSlider = document.getElementById('bar-slider');
+    const resetButton = document.getElementById('reset-button');
 
         const torsoVal = document.getElementById('torso-val');
         const femurVal = document.getElementById('femur-val');
@@ -185,10 +200,6 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x111827);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            container.appendChild(renderer.domElement);
-
             const aspect = container.clientWidth / container.clientHeight;
             const viewSize = 6;
             camera = new THREE.OrthographicCamera(
@@ -201,6 +212,16 @@
             );
             camera.position.set(5, 3, 8);
             camera.lookAt(0, 2.5, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.08;
+            controls.enablePan = false;
+            controls.rotateSpeed = 0.6;
 
             const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
             scene.add(ambientLight);
@@ -215,6 +236,9 @@
             scene.add(floor);
 
             createSkeleton();
+            controls.target.set(0, 1.2, 0);
+            controls.update();
+            controls.saveState();
             calibrateHipBase();
             addEventListeners();
             updateModelProportions();
@@ -296,6 +320,10 @@
 
             animSlider.addEventListener('input', updateAnimation);
 
+            if (resetButton) {
+                resetButton.addEventListener('click', resetToDefaults);
+            }
+
             torsoSlider.addEventListener('input', (e) => torsoVal.textContent = parseFloat(e.target.value).toFixed(2));
             femurSlider.addEventListener('input', (e) => femurVal.textContent = parseFloat(e.target.value).toFixed(2));
             tibiaSlider.addEventListener('input', (e) => tibiaVal.textContent = parseFloat(e.target.value).toFixed(2));
@@ -353,6 +381,25 @@
             skeleton.hip.rotation.z = 0;
             previousAnimValue = null;
             previousHipAngle = null;
+        }
+
+        function resetToDefaults() {
+            animSlider.value = DEFAULTS.animation.toString();
+            torsoSlider.value = DEFAULTS.torso.toString();
+            femurSlider.value = DEFAULTS.femur.toString();
+            tibiaSlider.value = DEFAULTS.tibia.toString();
+            barSlider.value = DEFAULTS.bar.toString();
+
+            torsoVal.textContent = DEFAULTS.torso.toFixed(2);
+            femurVal.textContent = DEFAULTS.femur.toFixed(2);
+            tibiaVal.textContent = DEFAULTS.tibia.toFixed(2);
+            barVal.textContent = DEFAULTS.bar.toFixed(2);
+
+            updateModelProportions();
+
+            if (controls) {
+                controls.reset();
+            }
         }
 
         function updateModelProportions() {
@@ -534,6 +581,9 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            if (controls) {
+                controls.update();
+            }
             renderer.render(scene, camera);
         }
 
