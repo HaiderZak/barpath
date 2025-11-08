@@ -109,9 +109,10 @@
                 <h2 class="text-sm font-semibold text-blue-400 mb-3">BAR MARKER</h2>
                 <label for="bar-slider" class="text-sm text-gray-300 block mb-1">Marker Height: <span id="bar-val" class="font-medium text-white">0.50</span></label>
                 <input id="bar-slider" type="range" min="0" max="1" step="0.01" value="0.5">
-                <div class="flex justify-between text-xs text-gray-400">
-                    <span>Low Bar</span>
-                    <span>High Bar</span>
+                <div class="grid grid-cols-3 text-xs text-gray-400 w-full">
+                    <span class="text-left">French Low bar</span>
+                    <span class="text-center">Low bar</span>
+                    <span class="text-right">High bar</span>
                 </div>
             </div>
 
@@ -156,6 +157,18 @@
     const LEFT_LEG_OFFSET = PELVIS_HALF_DEPTH;
     const RIGHT_LEG_OFFSET = -PELVIS_HALF_DEPTH;
     const BAR_DEPTH_OFFSET = -0.12;
+    const TORSO_HALF_DEPTH = (LIMB_WIDTH * 2.2) / 2;
+    const SHOULDER_HALF_WIDTH = TORSO_HALF_DEPTH + 0.015;
+    const SHOULDER_DEPTH_OFFSET = -TORSO_HALF_DEPTH - 0.008;
+    const SHOULDER_HEIGHT_RATIO = 0.72;
+    const SHOULDER_VERTICAL_DIRECTION = new THREE.Vector3(0, -1, 0);
+    const ARM_RADIUS = LIMB_WIDTH * 0.6;
+    const HAND_RADIUS = JOINT_RADIUS * 0.6;
+    const HAND_GRIP_DROP = 0.08;
+    const ARM_MIN_GRIP = SHOULDER_HALF_WIDTH + 0.12;
+    const ARM_MAX_GRIP = SHOULDER_HALF_WIDTH + 0.36;
+    const UPPER_ARM_LENGTH = 0.36;
+    const FOREARM_LENGTH = 0.44;
     const DEFAULTS = Object.freeze({
         animation: 0,
         torso: 1.0,
@@ -170,6 +183,11 @@
     const tempVec1 = new THREE.Vector3();
     const tempVec2 = new THREE.Vector3();
     const tempVec3 = new THREE.Vector3();
+    const tempVec4 = new THREE.Vector3();
+    const tempVec5 = new THREE.Vector3();
+    const tempVec6 = new THREE.Vector3();
+    const tempQuat = new THREE.Quaternion();
+    const upVector = new THREE.Vector3(0, 1, 0);
     let hipBaseOffset = 0;
     let previousAnimValue = null;
     let previousHipAngle = null;
@@ -262,7 +280,8 @@
             const torsoGeo = new THREE.BoxGeometry(LIMB_WIDTH * 2.2, 1.3, LIMB_WIDTH * 2.2);
             const headGeo = new THREE.SphereGeometry(HEAD_RADIUS, 16, 16);
             const jointGeo = new THREE.SphereGeometry(JOINT_RADIUS, 16, 16);
-            const markerGeo = new THREE.SphereGeometry(0.06, 16, 16);
+            const handGeo = new THREE.SphereGeometry(HAND_RADIUS, 16, 16);
+            const armGeo = new THREE.CylinderGeometry(ARM_RADIUS, ARM_RADIUS, 1, 14);
             const pelvisGeo = new THREE.BoxGeometry(LIMB_WIDTH * 3, 0.35, LEG_SPACING * 4);
             const barGeo = new THREE.CylinderGeometry(0.012, 0.012, 1.9, 24);
             const plateGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.045, 48);
@@ -319,6 +338,50 @@
             skeleton.pelvis = new THREE.Mesh(pelvisGeo, limbMaterial);
             skeleton.pelvis.position.set(0, 0.18, HIP_CENTER_OFFSET);
             skeleton.hip.add(skeleton.pelvis);
+
+            skeleton.rightShoulderAnchor = new THREE.Group();
+            skeleton.leftShoulderAnchor = new THREE.Group();
+            skeleton.rightShoulderJoint = new THREE.Mesh(jointGeo, jointMaterial);
+            skeleton.leftShoulderJoint = new THREE.Mesh(jointGeo, jointMaterial);
+            skeleton.rightShoulderAnchor.add(skeleton.rightShoulderJoint);
+            skeleton.leftShoulderAnchor.add(skeleton.leftShoulderJoint);
+            skeleton.torso.add(skeleton.rightShoulderAnchor);
+            skeleton.torso.add(skeleton.leftShoulderAnchor);
+            const initialTorsoLength = DEFAULTS.torso;
+            const initialTorsoHalfHeight = 0.65 * initialTorsoLength;
+            const initialShoulderY = THREE.MathUtils.lerp(-initialTorsoHalfHeight, initialTorsoHalfHeight, SHOULDER_HEIGHT_RATIO);
+            skeleton.rightShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, initialShoulderY, SHOULDER_HALF_WIDTH);
+            skeleton.leftShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, initialShoulderY, -SHOULDER_HALF_WIDTH);
+
+            skeleton.rightUpperArm = new THREE.Mesh(armGeo, limbMaterial);
+            skeleton.leftUpperArm = new THREE.Mesh(armGeo, limbMaterial);
+            skeleton.rightForearm = new THREE.Mesh(armGeo, limbMaterial);
+            skeleton.leftForearm = new THREE.Mesh(armGeo, limbMaterial);
+            [
+                skeleton.rightUpperArm,
+                skeleton.leftUpperArm
+            ].forEach(upper => {
+                upper.scale.y = UPPER_ARM_LENGTH;
+            });
+            [
+                skeleton.rightForearm,
+                skeleton.leftForearm
+            ].forEach(lower => {
+                lower.scale.y = FOREARM_LENGTH;
+            });
+            scene.add(skeleton.rightUpperArm);
+            scene.add(skeleton.leftUpperArm);
+            scene.add(skeleton.rightForearm);
+            scene.add(skeleton.leftForearm);
+
+            skeleton.rightElbow = new THREE.Group();
+            skeleton.leftElbow = new THREE.Group();
+            skeleton.rightElbowJoint = new THREE.Mesh(jointGeo, jointMaterial);
+            skeleton.leftElbowJoint = new THREE.Mesh(jointGeo, jointMaterial);
+            skeleton.rightElbow.add(skeleton.rightElbowJoint);
+            skeleton.leftElbow.add(skeleton.leftElbowJoint);
+            scene.add(skeleton.rightElbow);
+            scene.add(skeleton.leftElbow);
 
             skeleton.leftAnkle = new THREE.Group();
             skeleton.leftAnkleRotator = new THREE.Group();
@@ -378,6 +441,18 @@
 
             skeleton.torso.add(skeleton.barbell);
             skeleton.barbell.position.set(BAR_DEPTH_OFFSET, 0.35, 0);
+
+            skeleton.rightHandGroup = new THREE.Group();
+            skeleton.leftHandGroup = new THREE.Group();
+            skeleton.barbell.add(skeleton.rightHandGroup);
+            skeleton.barbell.add(skeleton.leftHandGroup);
+            skeleton.rightHandGroup.position.set(0, -HAND_GRIP_DROP, ARM_MAX_GRIP);
+            skeleton.leftHandGroup.position.set(0, -HAND_GRIP_DROP, -ARM_MAX_GRIP);
+
+            skeleton.rightHand = new THREE.Mesh(handGeo, limbMaterial);
+            skeleton.leftHand = new THREE.Mesh(handGeo, limbMaterial);
+            skeleton.rightHandGroup.add(skeleton.rightHand);
+            skeleton.leftHandGroup.add(skeleton.leftHand);
         }
 
         function addEventListeners() {
@@ -409,6 +484,7 @@
             if (skeleton.barbell) {
                 skeleton.barbell.position.y = normalizedY;
                 skeleton.barbell.position.x = BAR_DEPTH_OFFSET;
+                updateArmAttachments();
             }
             barVal.textContent = placement.toFixed(2);
         }
@@ -526,6 +602,13 @@
                 skeleton.pelvis.position.z = HIP_CENTER_OFFSET;
             }
 
+            if (skeleton.rightShoulderAnchor && skeleton.leftShoulderAnchor) {
+                const torsoHalfHeight = 0.65 * torsoLength;
+                const shoulderLocalY = THREE.MathUtils.lerp(-torsoHalfHeight, torsoHalfHeight, SHOULDER_HEIGHT_RATIO);
+                skeleton.rightShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, shoulderLocalY, SHOULDER_HALF_WIDTH);
+                skeleton.leftShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, shoulderLocalY, -SHOULDER_HALF_WIDTH);
+            }
+
             skeleton.foot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
             if (skeleton.leftFoot) {
                 skeleton.leftFoot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
@@ -541,8 +624,101 @@
             tibiaVal.textContent = tibiaLength.toFixed(2);
             updateBarbellHeight();
             calibrateHipBase();
+            updateArmAttachments();
 
             updateAnimation();
+        }
+
+        function alignSegmentBetween(segmentMesh, startObject, endObject, segmentLength) {
+            if (!segmentMesh || !startObject || !endObject) return;
+
+            startObject.updateWorldMatrix(true, false);
+            endObject.updateWorldMatrix(true, false);
+            startObject.getWorldPosition(tempVec1);
+            endObject.getWorldPosition(tempVec2);
+
+            tempVec4.copy(tempVec2).sub(tempVec1);
+            const distance = tempVec4.length();
+            if (distance < 1e-4) {
+                segmentMesh.visible = false;
+                return;
+            }
+
+            segmentMesh.visible = true;
+            const direction = tempVec4.normalize();
+            tempQuat.setFromUnitVectors(upVector, direction);
+            segmentMesh.setRotationFromQuaternion(tempQuat);
+
+            tempVec3.copy(tempVec1).add(tempVec2).multiplyScalar(0.5);
+            segmentMesh.position.copy(tempVec3);
+            segmentMesh.scale.set(1, segmentLength, 1);
+        }
+
+        function updateArmAttachments() {
+            if (!skeleton.barbell || !skeleton.rightHandGroup || !skeleton.leftHandGroup) return;
+
+            const placementRaw = barSlider ? parseFloat(barSlider.value) : DEFAULTS.bar;
+            const placement = Number.isFinite(placementRaw) ? THREE.MathUtils.clamp(placementRaw, 0, 1) : DEFAULTS.bar;
+            const baseGrip = THREE.MathUtils.lerp(ARM_MAX_GRIP, ARM_MIN_GRIP, placement);
+            const minimumGrip = Math.max(SHOULDER_HALF_WIDTH + 0.02, ARM_MIN_GRIP);
+            const gripHalfWidth = THREE.MathUtils.clamp(Math.max(baseGrip, minimumGrip), minimumGrip, ARM_MAX_GRIP);
+
+            skeleton.rightHandGroup.position.set(0, -HAND_GRIP_DROP, gripHalfWidth);
+            skeleton.leftHandGroup.position.set(0, -HAND_GRIP_DROP, -gripHalfWidth);
+
+            skeleton.barbell.updateWorldMatrix(true, false);
+            skeleton.rightHandGroup.updateWorldMatrix(true, false);
+            skeleton.leftHandGroup.updateWorldMatrix(true, false);
+
+            const updateSide = (isRight) => {
+                const shoulderAnchor = isRight ? skeleton.rightShoulderAnchor : skeleton.leftShoulderAnchor;
+                const handGroup = isRight ? skeleton.rightHandGroup : skeleton.leftHandGroup;
+                const elbowGroup = isRight ? skeleton.rightElbow : skeleton.leftElbow;
+                const upperArm = isRight ? skeleton.rightUpperArm : skeleton.leftUpperArm;
+                const forearm = isRight ? skeleton.rightForearm : skeleton.leftForearm;
+
+                if (!shoulderAnchor || !handGroup || !elbowGroup) return;
+
+                shoulderAnchor.updateWorldMatrix(true, false);
+                handGroup.updateWorldMatrix(true, false);
+
+                const shoulderWorld = tempVec1;
+                const handWorld = tempVec6;
+                shoulderAnchor.getWorldPosition(shoulderWorld);
+                handGroup.getWorldPosition(handWorld);
+
+                const verticalDir = SHOULDER_VERTICAL_DIRECTION;
+                const elbowWorld = tempVec4.copy(shoulderWorld).add(tempVec3.copy(verticalDir).multiplyScalar(UPPER_ARM_LENGTH));
+
+                elbowGroup.position.copy(elbowWorld);
+                elbowGroup.updateMatrixWorld(true);
+
+                if (upperArm) {
+                    alignSegmentBetween(upperArm, shoulderAnchor, elbowGroup, UPPER_ARM_LENGTH);
+                }
+
+                if (forearm) {
+                    const elbowWorldActual = tempVec2;
+                    elbowGroup.getWorldPosition(elbowWorldActual);
+
+                    const elbowToHand = tempVec3.copy(handWorld).sub(elbowWorldActual);
+                    const forearmDistance = elbowToHand.length();
+                    if (forearmDistance < 1e-5) {
+                        forearm.visible = false;
+                    } else {
+                        forearm.visible = true;
+                        elbowToHand.normalize();
+                        tempQuat.setFromUnitVectors(upVector, elbowToHand);
+                        forearm.setRotationFromQuaternion(tempQuat);
+                        tempVec5.copy(elbowWorldActual).add(handWorld).multiplyScalar(0.5);
+                        forearm.position.copy(tempVec5);
+                        forearm.scale.set(1, forearmDistance, 1);
+                    }
+                }
+            };
+
+            updateSide(true);
+            updateSide(false);
         }
 
         function updateAnimation() {
@@ -696,6 +872,8 @@
             }
 
             skeleton.ankle.updateWorldMatrix(true, false);
+
+            updateArmAttachments();
 
             const hipDeg = THREE.MathUtils.radToDeg(finalHip);
             const kneeDeg = Math.abs(THREE.MathUtils.radToDeg(kneeFlex));
