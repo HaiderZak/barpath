@@ -138,9 +138,10 @@
         import * as THREE from 'https://cdn.skypack.dev/three@0.132.2';
         import { OrbitControls } from 'https://cdn.skypack.dev/three@0.132.2/examples/jsm/controls/OrbitControls.js';
 
-        const LIMB_WIDTH = 0.05;
+        const LIMB_WIDTH = 0.07;
         const JOINT_RADIUS = 0.07;
-        const HEAD_RADIUS = 0.15;
+    const HEAD_RADIUS = 0.2;
+    const HEAD_VERTICAL_OFFSET = 0.12;
     const FOOT_LENGTH = 0.5;
     const FOOT_FORWARD = 0.18;
     const DEPTH_MARGIN = 0.02;
@@ -149,6 +150,12 @@
     const HIP_MIN = THREE.MathUtils.degToRad(-160);
     const HIP_MAX = THREE.MathUtils.degToRad(45);
     const START_ALIGN_WEIGHT = 0.25;
+    const LEG_SPACING = 0.1;
+    const PELVIS_HALF_DEPTH = LEG_SPACING * 2;
+    const HIP_CENTER_OFFSET = PELVIS_HALF_DEPTH;
+    const LEFT_LEG_OFFSET = PELVIS_HALF_DEPTH;
+    const RIGHT_LEG_OFFSET = -PELVIS_HALF_DEPTH;
+    const BAR_DEPTH_OFFSET = -0.12;
     const DEFAULTS = Object.freeze({
         animation: 0,
         torso: 1.0,
@@ -182,7 +189,7 @@
         const torsoVal = document.getElementById('torso-val');
         const femurVal = document.getElementById('femur-val');
         const tibiaVal = document.getElementById('tibia-val');
-        const barVal = document.getElementById('bar-val');
+    const barVal = document.getElementById('bar-val');
 
         const squatStart = {
             hipFlex: THREE.MathUtils.degToRad(0),
@@ -252,18 +259,19 @@
             const footGeo = new THREE.BoxGeometry(FOOT_LENGTH, LIMB_WIDTH, LIMB_WIDTH);
             const tibiaGeo = new THREE.BoxGeometry(LIMB_WIDTH, 1, LIMB_WIDTH);
             const femurGeo = new THREE.BoxGeometry(LIMB_WIDTH, 1, LIMB_WIDTH);
-            const torsoGeo = new THREE.BoxGeometry(LIMB_WIDTH * 2.2, 1, LIMB_WIDTH * 2.2);
+            const torsoGeo = new THREE.BoxGeometry(LIMB_WIDTH * 2.2, 1.3, LIMB_WIDTH * 2.2);
             const headGeo = new THREE.SphereGeometry(HEAD_RADIUS, 16, 16);
             const jointGeo = new THREE.SphereGeometry(JOINT_RADIUS, 16, 16);
             const markerGeo = new THREE.SphereGeometry(0.06, 16, 16);
+            const pelvisGeo = new THREE.BoxGeometry(LIMB_WIDTH * 3, 0.35, LEG_SPACING * 4);
+            const barGeo = new THREE.CylinderGeometry(0.012, 0.012, 1.9, 24);
+            const plateGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.045, 48);
 
             skeleton.foot = new THREE.Mesh(footGeo, limbMaterial);
             skeleton.tibia = new THREE.Mesh(tibiaGeo, limbMaterial);
             skeleton.femur = new THREE.Mesh(femurGeo, limbMaterial);
             skeleton.torso = new THREE.Mesh(torsoGeo, limbMaterial);
             skeleton.head = new THREE.Mesh(headGeo, limbMaterial);
-            skeleton.barMarker = new THREE.Mesh(markerGeo, new THREE.MeshStandardMaterial({ color: 0xef4444, emissive: 0x7f1d1d, emissiveIntensity: 0.6 }));
-
             skeleton.ankleJoint = new THREE.Mesh(jointGeo, jointMaterial);
             skeleton.kneeJoint = new THREE.Mesh(jointGeo, jointMaterial);
             skeleton.hipJoint = new THREE.Mesh(jointGeo, jointMaterial);
@@ -292,9 +300,8 @@
 
             skeleton.hip.add(skeleton.torso);
             skeleton.hip.add(skeleton.head);
-            skeleton.torso.add(skeleton.barMarker);
 
-            skeleton.ankle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, 0);
+            skeleton.ankle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, RIGHT_LEG_OFFSET);
             skeleton.foot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
             skeleton.ankleJoint.position.set(0, 0, 0);
 
@@ -306,9 +313,71 @@
             skeleton.hip.position.set(0, 1, 0);
             skeleton.hipJoint.position.set(0, 1, 0);
 
-            skeleton.torso.position.set(0, 0.5, 0);
-            skeleton.head.position.set(0, 1.1, 0);
-            skeleton.barMarker.position.set(0, 0, LIMB_WIDTH * 2.5);
+            skeleton.torso.position.set(0, 0.65, HIP_CENTER_OFFSET);
+            skeleton.head.position.set(0, 1.15 + HEAD_VERTICAL_OFFSET, HIP_CENTER_OFFSET);
+
+            skeleton.pelvis = new THREE.Mesh(pelvisGeo, limbMaterial);
+            skeleton.pelvis.position.set(0, 0.18, HIP_CENTER_OFFSET);
+            skeleton.hip.add(skeleton.pelvis);
+
+            skeleton.leftAnkle = new THREE.Group();
+            skeleton.leftAnkleRotator = new THREE.Group();
+            skeleton.leftKnee = new THREE.Group();
+            skeleton.leftFemurGroup = new THREE.Group();
+            skeleton.leftHip = new THREE.Group();
+
+            skeleton.leftFoot = new THREE.Mesh(footGeo, limbMaterial);
+            skeleton.leftAnkleJoint = new THREE.Mesh(jointGeo, jointMaterial);
+            skeleton.leftTibia = new THREE.Mesh(tibiaGeo, limbMaterial);
+            skeleton.leftKneeJoint = new THREE.Mesh(jointGeo, jointMaterial);
+            skeleton.leftFemur = new THREE.Mesh(femurGeo, limbMaterial);
+            skeleton.leftHipJoint = new THREE.Mesh(jointGeo, jointMaterial);
+
+            scene.add(skeleton.leftAnkle);
+
+            skeleton.leftAnkle.add(skeleton.leftFoot);
+            skeleton.leftAnkle.add(skeleton.leftAnkleJoint);
+            skeleton.leftAnkle.add(skeleton.leftAnkleRotator);
+
+            skeleton.leftAnkleRotator.add(skeleton.leftTibia);
+            skeleton.leftAnkleRotator.add(skeleton.leftKneeJoint);
+            skeleton.leftAnkleRotator.add(skeleton.leftKnee);
+
+            skeleton.leftKnee.add(skeleton.leftFemurGroup);
+
+            skeleton.leftFemurGroup.add(skeleton.leftFemur);
+            skeleton.leftFemurGroup.add(skeleton.leftHipJoint);
+            skeleton.leftFemurGroup.add(skeleton.leftHip);
+
+            skeleton.leftAnkle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, LEFT_LEG_OFFSET);
+            skeleton.leftFoot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
+            skeleton.leftAnkleJoint.position.set(0, 0, 0);
+
+            skeleton.leftTibia.position.set(0, 0.5, 0);
+            skeleton.leftKnee.position.set(0, 1, 0);
+            skeleton.leftKneeJoint.position.set(0, 1, 0);
+
+            skeleton.leftFemur.position.set(0, 0.5, 0);
+            skeleton.leftHip.position.set(0, 1, 0);
+            skeleton.leftHipJoint.position.set(0, 1, 0);
+
+            const barMaterial = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.75, roughness: 0.35 });
+            const plateMaterial = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.6, roughness: 0.4, emissive: 0x7f1d1d, emissiveIntensity: 0.25 });
+            skeleton.barbell = new THREE.Group();
+            const barMesh = new THREE.Mesh(barGeo, barMaterial);
+            barMesh.rotation.x = Math.PI / 2;
+            skeleton.barbell.add(barMesh);
+
+            const plateOffsets = [0.85, -0.85];
+            plateOffsets.forEach(offset => {
+                const plate = new THREE.Mesh(plateGeo, plateMaterial);
+                plate.rotation.x = Math.PI / 2;
+                plate.position.z = offset;
+                skeleton.barbell.add(plate);
+            });
+
+            skeleton.torso.add(skeleton.barbell);
+            skeleton.barbell.position.set(BAR_DEPTH_OFFSET, 0.35, 0);
         }
 
         function addEventListeners() {
@@ -328,18 +397,19 @@
             femurSlider.addEventListener('input', (e) => femurVal.textContent = parseFloat(e.target.value).toFixed(2));
             tibiaSlider.addEventListener('input', (e) => tibiaVal.textContent = parseFloat(e.target.value).toFixed(2));
             barSlider.addEventListener('input', () => {
-                updateBarMarkerPosition();
+                updateBarbellHeight();
                 calibrateHipBase();
                 updateAnimation();
             });
         }
 
-        function updateBarMarkerPosition() {
-            if (!skeleton.barMarker) return;
+        function updateBarbellHeight() {
             const placement = parseFloat(barSlider.value);
             const normalizedY = THREE.MathUtils.lerp(-0.15, 0.4, placement);
-            skeleton.barMarker.position.y = normalizedY;
-            skeleton.barMarker.position.z = LIMB_WIDTH * 2.5;
+            if (skeleton.barbell) {
+                skeleton.barbell.position.y = normalizedY;
+                skeleton.barbell.position.x = BAR_DEPTH_OFFSET;
+            }
             barVal.textContent = placement.toFixed(2);
         }
 
@@ -350,8 +420,20 @@
             skeleton.femurGroup.rotation.z = squatStart.ankleFlex - squatStart.kneeFlex;
             skeleton.hip.rotation.z = 0;
 
+            if (skeleton.leftAnkleRotator) {
+                skeleton.leftAnkleRotator.rotation.z = squatStart.ankleFlex;
+                skeleton.leftFemurGroup.rotation.z = squatStart.ankleFlex - squatStart.kneeFlex;
+                skeleton.leftHip.rotation.z = 0;
+            }
+
             skeleton.ankle.position.x = 0;
             skeleton.foot.position.x = FOOT_FORWARD;
+            skeleton.ankle.position.z = RIGHT_LEG_OFFSET;
+            if (skeleton.leftAnkle) {
+                skeleton.leftAnkle.position.x = 0;
+                skeleton.leftFoot.position.x = FOOT_FORWARD;
+                skeleton.leftAnkle.position.z = LEFT_LEG_OFFSET;
+            }
 
             const MAX_ITER = 12;
             const MAX_DELTA = 0.12;
@@ -359,7 +441,10 @@
 
             for (let i = 0; i < MAX_ITER; i++) {
                 skeleton.ankle.updateWorldMatrix(true, false);
-                skeleton.barMarker.getWorldPosition(tempVec1);
+                if (!skeleton.barbell) break;
+                skeleton.barbell.updateWorldMatrix(true, false);
+                tempVec1.set(0, 0, 0);
+                skeleton.barbell.localToWorld(tempVec1);
                 skeleton.hip.getWorldPosition(tempVec2);
                 skeleton.foot.getWorldPosition(tempVec3);
 
@@ -395,6 +480,7 @@
             tibiaVal.textContent = DEFAULTS.tibia.toFixed(2);
             barVal.textContent = DEFAULTS.bar.toFixed(2);
 
+            updateBarbellHeight();
             updateModelProportions();
 
             if (controls) {
@@ -412,21 +498,48 @@
             skeleton.knee.position.y = tibiaLength;
             skeleton.kneeJoint.position.y = tibiaLength;
 
+            if (skeleton.leftTibia) {
+                skeleton.leftTibia.scale.y = tibiaLength;
+                skeleton.leftTibia.position.y = tibiaLength / 2;
+                skeleton.leftKnee.position.y = tibiaLength;
+                skeleton.leftKneeJoint.position.y = tibiaLength;
+            }
+
             skeleton.femur.scale.y = femurLength;
             skeleton.femur.position.y = femurLength / 2;
             skeleton.hip.position.y = femurLength;
             skeleton.hipJoint.position.y = femurLength;
 
+            if (skeleton.leftFemur) {
+                skeleton.leftFemur.scale.y = femurLength;
+                skeleton.leftFemur.position.y = femurLength / 2;
+                skeleton.leftHip.position.y = femurLength;
+                skeleton.leftHipJoint.position.y = femurLength;
+            }
+
             skeleton.torso.scale.y = torsoLength;
-            skeleton.torso.position.y = torsoLength / 2;
-            skeleton.head.position.y = torsoLength + HEAD_RADIUS;
+            skeleton.torso.position.y = torsoLength * 0.5 + 0.15;
+            skeleton.torso.position.z = HIP_CENTER_OFFSET;
+            skeleton.head.position.y = torsoLength * 1.02 + HEAD_RADIUS * 0.4 + HEAD_VERTICAL_OFFSET;
+            skeleton.head.position.z = HIP_CENTER_OFFSET;
+            if (skeleton.pelvis) {
+                skeleton.pelvis.position.z = HIP_CENTER_OFFSET;
+            }
 
             skeleton.foot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
+            if (skeleton.leftFoot) {
+                skeleton.leftFoot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
+            }
+
+            skeleton.ankle.position.z = RIGHT_LEG_OFFSET;
+            if (skeleton.leftAnkle) {
+                skeleton.leftAnkle.position.z = LEFT_LEG_OFFSET;
+            }
 
             torsoVal.textContent = torsoLength.toFixed(2);
             femurVal.textContent = femurLength.toFixed(2);
             tibiaVal.textContent = tibiaLength.toFixed(2);
-            updateBarMarkerPosition();
+            updateBarbellHeight();
             calibrateHipBase();
 
             updateAnimation();
@@ -461,13 +574,22 @@
             );
 
             skeleton.ankleRotator.rotation.z = ankleAngle;
+            if (skeleton.leftAnkleRotator) {
+                skeleton.leftAnkleRotator.rotation.z = ankleAngle;
+            }
 
             let femurAngle = ankleAngle - kneeFlex;
             skeleton.femurGroup.rotation.z = femurAngle;
+            if (skeleton.leftFemurGroup) {
+                skeleton.leftFemurGroup.rotation.z = femurAngle;
+            }
 
             // Initial hip guess uses calibrated offset for solver stability
             let hipSolve = THREE.MathUtils.clamp(hipBase + hipBaseOffset, HIP_MIN, HIP_MAX);
             skeleton.hip.rotation.z = hipSolve;
+            if (skeleton.leftHip) {
+                skeleton.leftHip.rotation.z = hipSolve;
+            }
 
             // Adjust knee flexion until hip drops below knee by DEPTH_MARGIN
             if (depthFactor > 0) {
@@ -487,15 +609,29 @@
                         kneeFlex -= kneeStep;
                         femurAngle = ankleAngle - kneeFlex;
                         skeleton.femurGroup.rotation.z = femurAngle;
+                        if (skeleton.leftFemurGroup) {
+                            skeleton.leftFemurGroup.rotation.z = femurAngle;
+                        }
                     }
                 }
             }
 
             skeleton.femurGroup.rotation.z = femurAngle;
+            if (skeleton.leftFemurGroup) {
+                skeleton.leftFemurGroup.rotation.z = femurAngle;
+            }
 
             // Keep feet planted each frame
             skeleton.ankle.position.x = 0;
+            skeleton.ankle.position.z = RIGHT_LEG_OFFSET;
             skeleton.foot.position.x = FOOT_FORWARD;
+            if (skeleton.leftAnkle) {
+                skeleton.leftAnkle.position.x = 0;
+                skeleton.leftAnkle.position.z = LEFT_LEG_OFFSET;
+            }
+            if (skeleton.leftFoot) {
+                skeleton.leftFoot.position.x = FOOT_FORWARD;
+            }
 
             // Fully solve for hip rotation that keeps the bar marker over midfoot
             let hipAligned = hipSolve;
@@ -503,8 +639,14 @@
             const MAX_DELTA = 0.12; // ~6.9°
             for (let i = 0; i < MAX_ITER; i++) {
                 skeleton.hip.rotation.z = hipAligned;
+                if (skeleton.leftHip) {
+                    skeleton.leftHip.rotation.z = hipAligned;
+                }
                 skeleton.ankle.updateWorldMatrix(true, false);
-                skeleton.barMarker.getWorldPosition(tempVec1);
+                if (!skeleton.barbell) break;
+                skeleton.barbell.updateWorldMatrix(true, false);
+                tempVec1.set(0, 0, 0);
+                skeleton.barbell.localToWorld(tempVec1);
                 skeleton.hip.getWorldPosition(tempVec2);
                 skeleton.foot.getWorldPosition(tempVec3);
 
@@ -549,6 +691,9 @@
             }
 
             skeleton.hip.rotation.z = finalHip;
+            if (skeleton.leftHip) {
+                skeleton.leftHip.rotation.z = finalHip;
+            }
 
             skeleton.ankle.updateWorldMatrix(true, false);
 
