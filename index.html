@@ -161,7 +161,6 @@
     const SHOULDER_HALF_WIDTH = TORSO_HALF_DEPTH + 0.015;
     const SHOULDER_DEPTH_OFFSET = -TORSO_HALF_DEPTH - 0.008;
     const SHOULDER_HEIGHT_RATIO = 0.72;
-    const SHOULDER_VERTICAL_DIRECTION = new THREE.Vector3(0, -1, 0);
     const ARM_RADIUS = LIMB_WIDTH * 0.6;
     const HAND_RADIUS = JOINT_RADIUS * 0.6;
     const HAND_GRIP_DROP = 0.08;
@@ -169,6 +168,7 @@
     const ARM_MAX_GRIP = SHOULDER_HALF_WIDTH + 0.36;
     const UPPER_ARM_LENGTH = 0.36;
     const FOREARM_LENGTH = 0.44;
+    const HUMERUS_FLARE_ANGLE = THREE.MathUtils.degToRad(12);
     const DEFAULTS = Object.freeze({
         animation: 0,
         torso: 1.0,
@@ -187,6 +187,7 @@
     const tempVec5 = new THREE.Vector3();
     const tempVec6 = new THREE.Vector3();
     const tempQuat = new THREE.Quaternion();
+    const tempQuat2 = new THREE.Quaternion();
     const upVector = new THREE.Vector3(0, 1, 0);
     let hipBaseOffset = 0;
     let previousAnimValue = null;
@@ -669,6 +670,9 @@
             skeleton.barbell.updateWorldMatrix(true, false);
             skeleton.rightHandGroup.updateWorldMatrix(true, false);
             skeleton.leftHandGroup.updateWorldMatrix(true, false);
+            if (skeleton.torso) {
+                skeleton.torso.updateWorldMatrix(true, false);
+            }
 
             const updateSide = (isRight) => {
                 const shoulderAnchor = isRight ? skeleton.rightShoulderAnchor : skeleton.leftShoulderAnchor;
@@ -687,8 +691,17 @@
                 shoulderAnchor.getWorldPosition(shoulderWorld);
                 handGroup.getWorldPosition(handWorld);
 
-                const verticalDir = SHOULDER_VERTICAL_DIRECTION;
-                const elbowWorld = tempVec4.copy(shoulderWorld).add(tempVec3.copy(verticalDir).multiplyScalar(UPPER_ARM_LENGTH));
+                const torsoQuat = tempQuat;
+                if (skeleton.torso) {
+                    skeleton.torso.getWorldQuaternion(torsoQuat);
+                } else {
+                    torsoQuat.identity();
+                }
+
+                const flareQuat = tempQuat2.setFromAxisAngle(tempVec4.set(1, 0, 0), isRight ? -HUMERUS_FLARE_ANGLE : HUMERUS_FLARE_ANGLE);
+                const localDirection = tempVec3.set(0, -1, 0).applyQuaternion(flareQuat).normalize();
+                const elbowOffset = tempVec4.copy(localDirection).applyQuaternion(torsoQuat).normalize().multiplyScalar(UPPER_ARM_LENGTH);
+                const elbowWorld = tempVec5.copy(shoulderWorld).add(elbowOffset);
 
                 elbowGroup.position.copy(elbowWorld);
                 elbowGroup.updateMatrixWorld(true);
