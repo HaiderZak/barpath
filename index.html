@@ -91,15 +91,15 @@
                 <div class="space-y-4">
                     <div>
                         <label for="torso-slider" class="text-sm text-gray-300 block mb-1">Torso Length: <span id="torso-val" class="font-medium text-white">1.0</span></label>
-                        <input id="torso-slider" type="range" min="0.8" max="1.2" step="0.01" value="1.0">
+                        <input id="torso-slider" type="range" min="0.8" max="1.25" step="0.01" value="1.0">
                     </div>
                     <div>
                         <label for="femur-slider" class="text-sm text-gray-300 block mb-1">Femur Length: <span id="femur-val" class="font-medium text-white">1.0</span></label>
-                        <input id="femur-slider" type="range" min="0.8" max="1.2" step="0.01" value="1.0">
+                        <input id="femur-slider" type="range" min="0.8" max="1.25" step="0.01" value="1.0">
                     </div>
                     <div>
                         <label for="tibia-slider" class="text-sm text-gray-300 block mb-1">Tibia Length: <span id="tibia-val" class="font-medium text-white">1.0</span></label>
-                        <input id="tibia-slider" type="range" min="0.8" max="1.2" step="0.01" value="1.0">
+                        <input id="tibia-slider" type="range" min="0.8" max="1.25" step="0.01" value="1.0">
                     </div>
                 </div>
             </div>
@@ -168,8 +168,8 @@
     const ARM_MAX_GRIP = SHOULDER_HALF_WIDTH + 0.36;
     const UPPER_ARM_LENGTH = 0.36;
     const FOREARM_LENGTH = 0.44;
-    const FEMUR_BASE_SCALE = 0.9;
-    const TIBIA_BASE_SCALE = 0.9;
+    const FEMUR_BASE_SCALE = 0.7;
+    const TIBIA_BASE_SCALE = 0.7;
     const HUMERUS_FLARE_ANGLE = THREE.MathUtils.degToRad(12);
     const DEFAULTS = Object.freeze({
         animation: 0,
