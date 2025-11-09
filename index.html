@@ -168,6 +168,8 @@
     const ARM_MAX_GRIP = SHOULDER_HALF_WIDTH + 0.36;
     const UPPER_ARM_LENGTH = 0.36;
     const FOREARM_LENGTH = 0.44;
+    const FEMUR_BASE_SCALE = 0.9;
+    const TIBIA_BASE_SCALE = 0.9;
     const HUMERUS_FLARE_ANGLE = THREE.MathUtils.degToRad(12);
     const DEFAULTS = Object.freeze({
         animation: 0,
@@ -584,8 +586,10 @@
 
         function updateModelProportions() {
             const torsoLength = parseFloat(torsoSlider.value);
-            const femurLength = parseFloat(femurSlider.value);
-            const tibiaLength = parseFloat(tibiaSlider.value);
+            const femurFactor = parseFloat(femurSlider.value);
+            const tibiaFactor = parseFloat(tibiaSlider.value);
+            const femurLength = femurFactor * FEMUR_BASE_SCALE;
+            const tibiaLength = tibiaFactor * TIBIA_BASE_SCALE;
 
             skeleton.tibia.scale.y = tibiaLength;
             skeleton.tibia.position.y = tibiaLength / 2;
@@ -638,8 +642,8 @@
             }
 
             torsoVal.textContent = torsoLength.toFixed(2);
-            femurVal.textContent = femurLength.toFixed(2);
-            tibiaVal.textContent = tibiaLength.toFixed(2);
+            femurVal.textContent = femurFactor.toFixed(2);
+            tibiaVal.textContent = tibiaFactor.toFixed(2);
             updateBarbellHeight();
             calibrateHipBase();
             updateArmAttachments();
