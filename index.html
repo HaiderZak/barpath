@@ -427,16 +427,33 @@
 
             const barMaterial = new THREE.MeshStandardMaterial({ color: 0xd1d5db, metalness: 0.75, roughness: 0.35 });
             const plateMaterial = new THREE.MeshStandardMaterial({ color: 0xef4444, metalness: 0.6, roughness: 0.4, emissive: 0x7f1d1d, emissiveIntensity: 0.25 });
+            const greenPlateMaterial = new THREE.MeshStandardMaterial({ color: 0x10b981, metalness: 0.6, roughness: 0.4, emissive: 0x064e3b, emissiveIntensity: 0.2 });
             skeleton.barbell = new THREE.Group();
             const barMesh = new THREE.Mesh(barGeo, barMaterial);
             barMesh.rotation.x = Math.PI / 2;
             skeleton.barbell.add(barMesh);
 
-            const plateOffsets = [0.85, -0.85];
-            plateOffsets.forEach(offset => {
-                const plate = new THREE.Mesh(plateGeo, plateMaterial);
+            const redPlatesPerSide = 4;
+            const redPlateBaseOffset = 0.78;
+            const redPlateSpacing = 0.07;
+            for (let i = 0; i < redPlatesPerSide; i++) {
+                const offset = redPlateBaseOffset - i * redPlateSpacing;
+                [offset, -offset].forEach(sideOffset => {
+                    const plate = new THREE.Mesh(plateGeo, plateMaterial);
+                    plate.rotation.x = Math.PI / 2;
+                    plate.position.z = sideOffset;
+                    skeleton.barbell.add(plate);
+                });
+            }
+
+            const greenPlateRadius = 0.18;
+            const greenPlateThickness = 0.04;
+            const greenPlateGeo = new THREE.CylinderGeometry(greenPlateRadius, greenPlateRadius, greenPlateThickness, 48);
+            const greenPlateOffset = redPlateBaseOffset + redPlateSpacing;
+            [greenPlateOffset, -greenPlateOffset].forEach(sideOffset => {
+                const plate = new THREE.Mesh(greenPlateGeo, greenPlateMaterial);
                 plate.rotation.x = Math.PI / 2;
-                plate.position.z = offset;
+                plate.position.z = sideOffset;
                 skeleton.barbell.add(plate);
             });
 
