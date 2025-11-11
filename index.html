@@ -91,15 +91,23 @@
                 <div class="space-y-4">
                     <div>
                         <label for="torso-slider" class="text-sm text-gray-300 block mb-1">Torso Length: <span id="torso-val" class="font-medium text-white">1.0</span></label>
-                        <input id="torso-slider" type="range" min="0.8" max="1.25" step="0.01" value="1.0">
+                        <input id="torso-slider" type="range" min="0.75" max="1.25" step="0.01" value="1.0">
                     </div>
                     <div>
                         <label for="femur-slider" class="text-sm text-gray-300 block mb-1">Femur Length: <span id="femur-val" class="font-medium text-white">1.0</span></label>
-                        <input id="femur-slider" type="range" min="0.8" max="1.25" step="0.01" value="1.0">
+                        <input id="femur-slider" type="range" min="0.75" max="1.25" step="0.01" value="1.0">
                     </div>
                     <div>
                         <label for="tibia-slider" class="text-sm text-gray-300 block mb-1">Tibia Length: <span id="tibia-val" class="font-medium text-white">1.0</span></label>
-                        <input id="tibia-slider" type="range" min="0.8" max="1.25" step="0.01" value="1.0">
+                        <input id="tibia-slider" type="range" min="0.75" max="1.25" step="0.01" value="1.0">
+                    </div>
+                    <div>
+                        <label for="toe-slider" class="text-sm text-gray-300 block mb-1">Toe Angle: <span id="toe-val" class="font-medium text-white">0°</span></label>
+                        <input id="toe-slider" type="range" min="-30" max="30" step="1" value="0">
+                        <div class="flex justify-between text-xs text-gray-400 mt-1">
+                            <span>Inward</span>
+                            <span>Outward</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -142,7 +150,7 @@
         const LIMB_WIDTH = 0.07;
         const JOINT_RADIUS = 0.07;
     const HEAD_RADIUS = 0.2;
-    const HEAD_VERTICAL_OFFSET = 0.12;
+    const HEAD_VERTICAL_OFFSET = -0.06;
     const FOOT_LENGTH = 0.5;
     const FOOT_FORWARD = 0.18;
     const DEPTH_MARGIN = 0.02;
@@ -158,24 +166,35 @@
     const RIGHT_LEG_OFFSET = -PELVIS_HALF_DEPTH;
     const BAR_DEPTH_OFFSET = -0.12;
     const TORSO_HALF_DEPTH = (LIMB_WIDTH * 2.2) / 2;
-    const SHOULDER_HALF_WIDTH = TORSO_HALF_DEPTH + 0.015;
-    const SHOULDER_DEPTH_OFFSET = -TORSO_HALF_DEPTH - 0.008;
-    const SHOULDER_HEIGHT_RATIO = 0.72;
+    const TORSO_HALF_WIDTH = (LIMB_WIDTH * 3.2) / 2;
+    const TORSO_BASE_SCALE = 0.9;
+    const TORSO_TOP_TRIM = 0.22;
+    const MIN_TORSO_LENGTH = 0.28;
+    const TORSO_HALF_HEIGHT_RATIO = 0.65;
+    const TORSO_BOTTOM_OFFSET = 0.15;
+    const SHOULDER_HALF_WIDTH = TORSO_HALF_WIDTH + 0.02;
+    const SHOULDER_DEPTH_OFFSET = -TORSO_HALF_DEPTH - 0.01;
+    const SHOULDER_HEIGHT_RATIO = 0.82;
     const ARM_RADIUS = LIMB_WIDTH * 0.6;
     const HAND_RADIUS = JOINT_RADIUS * 0.6;
     const HAND_GRIP_DROP = 0.08;
     const ARM_MIN_GRIP = SHOULDER_HALF_WIDTH + 0.12;
     const ARM_MAX_GRIP = SHOULDER_HALF_WIDTH + 0.36;
-    const UPPER_ARM_LENGTH = 0.36;
-    const FOREARM_LENGTH = 0.44;
-    const FEMUR_BASE_SCALE = 0.7;
-    const TIBIA_BASE_SCALE = 0.7;
+    const UPPER_ARM_LENGTH = 0.44;
+    const FOREARM_LENGTH = 0.9;
+    const NECK_RADIUS = LIMB_WIDTH * 0.45;
+    const NECK_TAPER_RADIUS = LIMB_WIDTH * 0.38;
+    const NECK_BASE_LENGTH = 0.1216;
+    const NECK_MIN_LENGTH = 0.096;
+    const FEMUR_BASE_SCALE = 0.66;
+    const TIBIA_BASE_SCALE = 0.62;
     const HUMERUS_FLARE_ANGLE = THREE.MathUtils.degToRad(12);
     const DEFAULTS = Object.freeze({
         animation: 0,
         torso: 1.0,
         femur: 1.0,
         tibia: 1.0,
+        toe: 0,
         bar: 0.5
     });
 
@@ -204,12 +223,14 @@
         const torsoSlider = document.getElementById('torso-slider');
         const femurSlider = document.getElementById('femur-slider');
         const tibiaSlider = document.getElementById('tibia-slider');
+        const toeSlider = document.getElementById('toe-slider');
         const barSlider = document.getElementById('bar-slider');
     const resetButton = document.getElementById('reset-button');
 
         const torsoVal = document.getElementById('torso-val');
         const femurVal = document.getElementById('femur-val');
         const tibiaVal = document.getElementById('tibia-val');
+    const toeVal = document.getElementById('toe-val');
     const barVal = document.getElementById('bar-val');
 
         const squatStart = {
@@ -280,14 +301,15 @@
             const footGeo = new THREE.BoxGeometry(FOOT_LENGTH, LIMB_WIDTH, LIMB_WIDTH);
             const tibiaGeo = new THREE.BoxGeometry(LIMB_WIDTH, 1, LIMB_WIDTH);
             const femurGeo = new THREE.BoxGeometry(LIMB_WIDTH, 1, LIMB_WIDTH);
-            const torsoGeo = new THREE.BoxGeometry(LIMB_WIDTH * 2.2, 1.3, LIMB_WIDTH * 2.2);
+            const torsoGeo = new THREE.BoxGeometry(LIMB_WIDTH * 2.2, 1.3, LIMB_WIDTH * 3.2);
             const headGeo = new THREE.SphereGeometry(HEAD_RADIUS, 16, 16);
             const jointGeo = new THREE.SphereGeometry(JOINT_RADIUS, 16, 16);
             const handGeo = new THREE.SphereGeometry(HAND_RADIUS, 16, 16);
             const armGeo = new THREE.CylinderGeometry(ARM_RADIUS, ARM_RADIUS, 1, 14);
-            const pelvisGeo = new THREE.BoxGeometry(LIMB_WIDTH * 3, 0.35, LEG_SPACING * 4);
+            const pelvisGeo = new THREE.BoxGeometry(LIMB_WIDTH * 3, 0.26, LEG_SPACING * 4);
             const barGeo = new THREE.CylinderGeometry(0.012, 0.012, 1.9, 24);
             const plateGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.045, 48);
+            const neckGeo = new THREE.CylinderGeometry(NECK_RADIUS, NECK_TAPER_RADIUS, 1, 14);
 
             skeleton.foot = new THREE.Mesh(footGeo, limbMaterial);
             skeleton.tibia = new THREE.Mesh(tibiaGeo, limbMaterial);
@@ -322,6 +344,8 @@
 
             skeleton.hip.add(skeleton.torso);
             skeleton.hip.add(skeleton.head);
+            skeleton.neck = new THREE.Mesh(neckGeo, limbMaterial);
+            skeleton.hip.add(skeleton.neck);
 
             skeleton.ankle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, RIGHT_LEG_OFFSET);
             skeleton.foot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
@@ -335,8 +359,6 @@
             skeleton.hip.position.set(0, 1, 0);
             skeleton.hipJoint.position.set(0, 1, 0);
 
-            skeleton.torso.position.set(0, 0.65, HIP_CENTER_OFFSET);
-            skeleton.head.position.set(0, 1.15 + HEAD_VERTICAL_OFFSET, HIP_CENTER_OFFSET);
 
             skeleton.pelvis = new THREE.Mesh(pelvisGeo, limbMaterial);
             skeleton.pelvis.position.set(0, 0.18, HIP_CENTER_OFFSET);
@@ -350,11 +372,20 @@
             skeleton.leftShoulderAnchor.add(skeleton.leftShoulderJoint);
             skeleton.torso.add(skeleton.rightShoulderAnchor);
             skeleton.torso.add(skeleton.leftShoulderAnchor);
-            const initialTorsoLength = DEFAULTS.torso;
-            const initialTorsoHalfHeight = 0.65 * initialTorsoLength;
+            const initialRawTorsoLength = DEFAULTS.torso * TORSO_BASE_SCALE;
+            const initialTorsoLength = Math.max(initialRawTorsoLength - TORSO_TOP_TRIM, MIN_TORSO_LENGTH);
+            const initialTorsoHalfHeight = TORSO_HALF_HEIGHT_RATIO * initialTorsoLength;
             const initialShoulderY = THREE.MathUtils.lerp(-initialTorsoHalfHeight, initialTorsoHalfHeight, SHOULDER_HEIGHT_RATIO);
             skeleton.rightShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, initialShoulderY, SHOULDER_HALF_WIDTH);
             skeleton.leftShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, initialShoulderY, -SHOULDER_HALF_WIDTH);
+            skeleton.torso.scale.y = initialTorsoLength;
+            skeleton.torso.position.y = TORSO_BOTTOM_OFFSET + initialTorsoHalfHeight;
+            skeleton.torso.position.z = HIP_CENTER_OFFSET;
+            const initialNeckLength = Math.max(NECK_MIN_LENGTH, NECK_BASE_LENGTH * DEFAULTS.torso);
+            skeleton.neck.scale.set(1, initialNeckLength, 1);
+            const initialTorsoTop = TORSO_BOTTOM_OFFSET + initialTorsoLength;
+            skeleton.neck.position.set(0, initialTorsoTop + initialNeckLength * 0.5, HIP_CENTER_OFFSET);
+            skeleton.head.position.set(0, initialTorsoTop + initialNeckLength + HEAD_RADIUS + HEAD_VERTICAL_OFFSET, HIP_CENTER_OFFSET);
 
             skeleton.rightUpperArm = new THREE.Mesh(armGeo, limbMaterial);
             skeleton.leftUpperArm = new THREE.Mesh(armGeo, limbMaterial);
@@ -491,6 +522,9 @@
             torsoSlider.addEventListener('input', (e) => torsoVal.textContent = parseFloat(e.target.value).toFixed(2));
             femurSlider.addEventListener('input', (e) => femurVal.textContent = parseFloat(e.target.value).toFixed(2));
             tibiaSlider.addEventListener('input', (e) => tibiaVal.textContent = parseFloat(e.target.value).toFixed(2));
+            if (toeSlider) {
+                toeSlider.addEventListener('input', () => updateToeAngle());
+            }
             barSlider.addEventListener('input', () => {
                 updateBarbellHeight();
                 calibrateHipBase();
@@ -498,10 +532,31 @@
             });
         }
 
+        // Counteracts torso scaling so the barbell geometry keeps constant world dimensions.
+        function applyBarbellTorsoCompensation() {
+            if (!skeleton.barbell || !skeleton.torso) {
+                return 1;
+            }
+
+            const torsoScaleRaw = skeleton.torso.scale.y;
+            const torsoScale = Number.isFinite(torsoScaleRaw) ? torsoScaleRaw : 1;
+            const safeScale = Math.abs(torsoScale) > 1e-5 ? torsoScale : (torsoScale >= 0 ? 1 : -1);
+
+            const inverseScale = safeScale !== 0 ? 1 / safeScale : 1;
+            skeleton.barbell.scale.set(1, inverseScale, 1);
+
+            return safeScale === 0 ? 1 : safeScale;
+        }
+
         function updateBarbellHeight() {
             const placement = parseFloat(barSlider.value);
-            const normalizedY = THREE.MathUtils.lerp(-0.15, 0.4, placement);
+              const baseY = THREE.MathUtils.lerp(-0.04, 0.42, placement);
+              // Elevate mid and high positions while keeping French low-bar (0) unmoved.
+              const midBoost = 0.05 * Math.sin(Math.PI * placement);
+              const highBoost = 0.04 * (1 - Math.pow(1 - placement, 2));
+              const normalizedY = baseY + midBoost + highBoost;
             if (skeleton.barbell) {
+                applyBarbellTorsoCompensation();
                 skeleton.barbell.position.y = normalizedY;
                 skeleton.barbell.position.x = BAR_DEPTH_OFFSET;
                 updateArmAttachments();
@@ -569,11 +624,17 @@
             torsoSlider.value = DEFAULTS.torso.toString();
             femurSlider.value = DEFAULTS.femur.toString();
             tibiaSlider.value = DEFAULTS.tibia.toString();
+            if (toeSlider) {
+                toeSlider.value = DEFAULTS.toe.toString();
+            }
             barSlider.value = DEFAULTS.bar.toString();
 
             torsoVal.textContent = DEFAULTS.torso.toFixed(2);
             femurVal.textContent = DEFAULTS.femur.toFixed(2);
             tibiaVal.textContent = DEFAULTS.tibia.toFixed(2);
+            if (toeVal) {
+                toeVal.textContent = `${DEFAULTS.toe.toFixed(0)}°`;
+            }
             barVal.textContent = DEFAULTS.bar.toFixed(2);
 
             updateBarbellHeight();
@@ -585,11 +646,14 @@
         }
 
         function updateModelProportions() {
-            const torsoLength = parseFloat(torsoSlider.value);
+            const torsoScaleInput = parseFloat(torsoSlider.value);
             const femurFactor = parseFloat(femurSlider.value);
             const tibiaFactor = parseFloat(tibiaSlider.value);
             const femurLength = femurFactor * FEMUR_BASE_SCALE;
             const tibiaLength = tibiaFactor * TIBIA_BASE_SCALE;
+            const rawTorsoLength = torsoScaleInput * TORSO_BASE_SCALE;
+            const torsoLength = Math.max(rawTorsoLength - TORSO_TOP_TRIM, MIN_TORSO_LENGTH);
+            const torsoHalfHeight = TORSO_HALF_HEIGHT_RATIO * torsoLength;
 
             skeleton.tibia.scale.y = tibiaLength;
             skeleton.tibia.position.y = tibiaLength / 2;
@@ -616,17 +680,25 @@
             }
 
             skeleton.torso.scale.y = torsoLength;
-            skeleton.torso.position.y = torsoLength * 0.5 + 0.15;
+            skeleton.torso.position.y = TORSO_BOTTOM_OFFSET + torsoHalfHeight;
             skeleton.torso.position.z = HIP_CENTER_OFFSET;
-            skeleton.head.position.y = torsoLength * 1.02 + HEAD_RADIUS * 0.4 + HEAD_VERTICAL_OFFSET;
-            skeleton.head.position.z = HIP_CENTER_OFFSET;
+            const torsoTopLocalY = skeleton.torso.position.y + torsoHalfHeight;
+
+            const neckLength = Math.max(NECK_MIN_LENGTH, NECK_BASE_LENGTH * torsoScaleInput);
+            if (skeleton.neck) {
+                skeleton.neck.scale.set(1, neckLength, 1);
+                skeleton.neck.position.set(0, torsoTopLocalY + neckLength * 0.5, HIP_CENTER_OFFSET);
+            }
+
+            const headCenterY = torsoTopLocalY + neckLength + HEAD_RADIUS + HEAD_VERTICAL_OFFSET;
+            skeleton.head.position.set(0, headCenterY, HIP_CENTER_OFFSET);
             if (skeleton.pelvis) {
                 skeleton.pelvis.position.z = HIP_CENTER_OFFSET;
             }
 
             if (skeleton.rightShoulderAnchor && skeleton.leftShoulderAnchor) {
-                const torsoHalfHeight = 0.65 * torsoLength;
-                const shoulderLocalY = THREE.MathUtils.lerp(-torsoHalfHeight, torsoHalfHeight, SHOULDER_HEIGHT_RATIO);
+                const torsoHalfHeightAnchors = torsoHalfHeight;
+                const shoulderLocalY = THREE.MathUtils.lerp(-torsoHalfHeightAnchors, torsoHalfHeightAnchors, SHOULDER_HEIGHT_RATIO);
                 skeleton.rightShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, shoulderLocalY, SHOULDER_HALF_WIDTH);
                 skeleton.leftShoulderAnchor.position.set(SHOULDER_DEPTH_OFFSET, shoulderLocalY, -SHOULDER_HALF_WIDTH);
             }
@@ -641,7 +713,7 @@
                 skeleton.leftAnkle.position.z = LEFT_LEG_OFFSET;
             }
 
-            torsoVal.textContent = torsoLength.toFixed(2);
+            torsoVal.textContent = torsoScaleInput.toFixed(2);
             femurVal.textContent = femurFactor.toFixed(2);
             tibiaVal.textContent = tibiaFactor.toFixed(2);
             updateBarbellHeight();
