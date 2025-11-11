@@ -182,6 +182,8 @@
     const ARM_MAX_GRIP = SHOULDER_HALF_WIDTH + 0.36;
     const UPPER_ARM_LENGTH = 0.44;
     const FOREARM_LENGTH = 0.9;
+    const TOE_MIN = -30;
+    const TOE_MAX = 30;
     const NECK_RADIUS = LIMB_WIDTH * 0.45;
     const NECK_TAPER_RADIUS = LIMB_WIDTH * 0.38;
     const NECK_BASE_LENGTH = 0.1216;
@@ -213,6 +215,7 @@
     let hipBaseOffset = 0;
     let previousAnimValue = null;
     let previousHipAngle = null;
+    let currentToeAngle = DEFAULTS.toe;
 
         const container = document.getElementById('canvas-container');
         const readoutHip = document.getElementById('hip-angle');
@@ -320,13 +323,19 @@
             skeleton.kneeJoint = new THREE.Mesh(jointGeo, jointMaterial);
             skeleton.hipJoint = new THREE.Mesh(jointGeo, jointMaterial);
 
+            skeleton.rightLegBase = new THREE.Group();
+            skeleton.rightLegYaw = new THREE.Group();
+            skeleton.rightLegChain = new THREE.Group();
             skeleton.ankle = new THREE.Group();
             skeleton.ankleRotator = new THREE.Group();
             skeleton.knee = new THREE.Group();
             skeleton.femurGroup = new THREE.Group();
             skeleton.hip = new THREE.Group();
 
-            scene.add(skeleton.ankle);
+            scene.add(skeleton.rightLegBase);
+            skeleton.rightLegBase.add(skeleton.rightLegYaw);
+            skeleton.rightLegYaw.add(skeleton.rightLegChain);
+            skeleton.rightLegChain.add(skeleton.ankle);
 
             skeleton.ankle.add(skeleton.foot);
             skeleton.ankle.add(skeleton.ankleJoint);
@@ -347,7 +356,9 @@
             skeleton.neck = new THREE.Mesh(neckGeo, limbMaterial);
             skeleton.hip.add(skeleton.neck);
 
-            skeleton.ankle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, RIGHT_LEG_OFFSET);
+            skeleton.rightLegBase.position.set(0, 0, RIGHT_LEG_OFFSET);
+
+            skeleton.ankle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, 0);
             skeleton.foot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
             skeleton.ankleJoint.position.set(0, 0, 0);
 
@@ -417,6 +428,9 @@
             scene.add(skeleton.rightElbow);
             scene.add(skeleton.leftElbow);
 
+            skeleton.leftLegBase = new THREE.Group();
+            skeleton.leftLegYaw = new THREE.Group();
+            skeleton.leftLegChain = new THREE.Group();
             skeleton.leftAnkle = new THREE.Group();
             skeleton.leftAnkleRotator = new THREE.Group();
             skeleton.leftKnee = new THREE.Group();
@@ -430,7 +444,10 @@
             skeleton.leftFemur = new THREE.Mesh(femurGeo, limbMaterial);
             skeleton.leftHipJoint = new THREE.Mesh(jointGeo, jointMaterial);
 
-            scene.add(skeleton.leftAnkle);
+            scene.add(skeleton.leftLegBase);
+            skeleton.leftLegBase.add(skeleton.leftLegYaw);
+            skeleton.leftLegYaw.add(skeleton.leftLegChain);
+            skeleton.leftLegChain.add(skeleton.leftAnkle);
 
             skeleton.leftAnkle.add(skeleton.leftFoot);
             skeleton.leftAnkle.add(skeleton.leftAnkleJoint);
@@ -446,7 +463,9 @@
             skeleton.leftFemurGroup.add(skeleton.leftHipJoint);
             skeleton.leftFemurGroup.add(skeleton.leftHip);
 
-            skeleton.leftAnkle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, LEFT_LEG_OFFSET);
+            skeleton.leftLegBase.position.set(0, 0, LEFT_LEG_OFFSET);
+
+            skeleton.leftAnkle.position.set(0, JOINT_RADIUS + LIMB_WIDTH / 2, 0);
             skeleton.leftFoot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
             skeleton.leftAnkleJoint.position.set(0, 0, 0);
 
@@ -567,6 +586,8 @@
         function calibrateHipBase() {
             if (!skeleton.hip) return;
 
+            currentToeAngle = applyToeAngle(currentToeAngle);
+
             skeleton.ankleRotator.rotation.z = squatStart.ankleFlex;
             skeleton.femurGroup.rotation.z = squatStart.ankleFlex - squatStart.kneeFlex;
             skeleton.hip.rotation.z = 0;
@@ -578,12 +599,18 @@
             }
 
             skeleton.ankle.position.x = 0;
+            skeleton.ankle.position.z = 0;
             skeleton.foot.position.x = FOOT_FORWARD;
-            skeleton.ankle.position.z = RIGHT_LEG_OFFSET;
+            if (skeleton.rightLegBase) {
+                skeleton.rightLegBase.position.set(0, 0, RIGHT_LEG_OFFSET);
+            }
             if (skeleton.leftAnkle) {
                 skeleton.leftAnkle.position.x = 0;
+                skeleton.leftAnkle.position.z = 0;
                 skeleton.leftFoot.position.x = FOOT_FORWARD;
-                skeleton.leftAnkle.position.z = LEFT_LEG_OFFSET;
+            }
+            if (skeleton.leftLegBase) {
+                skeleton.leftLegBase.position.set(0, 0, LEFT_LEG_OFFSET);
             }
 
             const MAX_ITER = 12;
@@ -636,6 +663,8 @@
                 toeVal.textContent = `${DEFAULTS.toe.toFixed(0)}°`;
             }
             barVal.textContent = DEFAULTS.bar.toFixed(2);
+
+            currentToeAngle = applyToeAngle(DEFAULTS.toe);
 
             updateBarbellHeight();
             updateModelProportions();
@@ -708,9 +737,17 @@
                 skeleton.leftFoot.position.set(FOOT_FORWARD, -JOINT_RADIUS, 0);
             }
 
-            skeleton.ankle.position.z = RIGHT_LEG_OFFSET;
+            skeleton.ankle.position.x = 0;
+            skeleton.ankle.position.z = 0;
+            if (skeleton.rightLegBase) {
+                skeleton.rightLegBase.position.set(0, 0, RIGHT_LEG_OFFSET);
+            }
             if (skeleton.leftAnkle) {
-                skeleton.leftAnkle.position.z = LEFT_LEG_OFFSET;
+                skeleton.leftAnkle.position.x = 0;
+                skeleton.leftAnkle.position.z = 0;
+            }
+            if (skeleton.leftLegBase) {
+                skeleton.leftLegBase.position.set(0, 0, LEFT_LEG_OFFSET);
             }
 
             torsoVal.textContent = torsoScaleInput.toFixed(2);
@@ -720,6 +757,45 @@
             calibrateHipBase();
             updateArmAttachments();
 
+            updateAnimation();
+        }
+
+        function applyToeAngle(angleDeg) {
+            const safeDeg = Number.isFinite(angleDeg) ? angleDeg : 0;
+            const clampedDeg = THREE.MathUtils.clamp(safeDeg, TOE_MIN, TOE_MAX);
+            const angleRad = THREE.MathUtils.degToRad(clampedDeg);
+
+            if (skeleton.rightLegYaw) {
+                skeleton.rightLegYaw.rotation.y = angleRad;
+            }
+            if (skeleton.leftLegYaw) {
+                skeleton.leftLegYaw.rotation.y = -angleRad;
+            }
+
+            if (skeleton.hip) {
+                skeleton.hip.rotation.y = -angleRad;
+            }
+            if (skeleton.leftHip) {
+                skeleton.leftHip.rotation.y = angleRad;
+            }
+
+            return clampedDeg;
+        }
+
+        function updateToeAngle() {
+            const sliderValue = toeSlider ? parseFloat(toeSlider.value) : currentToeAngle;
+            const clamped = applyToeAngle(sliderValue);
+            currentToeAngle = clamped;
+
+            if (toeSlider) {
+                toeSlider.value = clamped.toString();
+            }
+
+            if (toeVal) {
+                toeVal.textContent = `${clamped.toFixed(0)}°`;
+            }
+
+            calibrateHipBase();
             updateAnimation();
         }
 
@@ -828,6 +904,7 @@
         }
 
         function updateAnimation() {
+            currentToeAngle = applyToeAngle(currentToeAngle);
             const t = parseFloat(animSlider.value);
 
             const ease = (value, power) => Math.pow(THREE.MathUtils.clamp(value, 0, 1), power);
@@ -905,14 +982,20 @@
 
             // Keep feet planted each frame
             skeleton.ankle.position.x = 0;
-            skeleton.ankle.position.z = RIGHT_LEG_OFFSET;
+            skeleton.ankle.position.z = 0;
             skeleton.foot.position.x = FOOT_FORWARD;
+            if (skeleton.rightLegBase) {
+                skeleton.rightLegBase.position.set(0, 0, RIGHT_LEG_OFFSET);
+            }
             if (skeleton.leftAnkle) {
                 skeleton.leftAnkle.position.x = 0;
-                skeleton.leftAnkle.position.z = LEFT_LEG_OFFSET;
+                skeleton.leftAnkle.position.z = 0;
             }
             if (skeleton.leftFoot) {
                 skeleton.leftFoot.position.x = FOOT_FORWARD;
+            }
+            if (skeleton.leftLegBase) {
+                skeleton.leftLegBase.position.set(0, 0, LEFT_LEG_OFFSET);
             }
 
             // Fully solve for hip rotation that keeps the bar marker over midfoot
